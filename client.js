@@ -63,6 +63,36 @@ function addBreakdown(breakdown, kind, name, earned) {
   return { previousPoints: breakdown.previousPoints, rows }
 }
 
+const CATEGORY_ORDER = ['web', 'skill', 'files', 'terminal', 'browser', 'complete', 'other', 'unknown']
+
+/** A small, explicit vocabulary keeps new DSH tools visible under "other" until classified. */
+function classifyActivity(kind, rawName) {
+  if (kind === 'complete') return 'complete'
+  if (rawName === 'other') return 'other'
+  if (typeof rawName !== 'string' || !rawName.trim() || rawName === 'unknown') return 'unknown'
+  const name = rawName.trim().toLowerCase().replace(/[.\-:/]+/gu, '_').replace(/_+/gu, '_')
+  const is = value => name === value || name.endsWith(`_${value}`)
+  if (['web_search', 'web_fetch', 'search_web', 'fetch_web'].some(is)) return 'web'
+  if (['skill', 'load_skill', 'use_skill'].some(is)) return 'skill'
+  if (['read', 'write', 'edit'].includes(name) || ['glob', 'grep', 'apply_patch', 'read_file', 'write_file', 'edit_file', 'str_replace_editor', 'fs_read', 'fs_write', 'fs_edit'].some(is)) return 'files'
+  if (['bash', 'pwsh', 'exec_command', 'terminal_open', 'terminal_send', 'terminal_read'].some(is)) return 'terminal'
+  if (name.startsWith('stagehand_') || name.startsWith('playwright_') || name.startsWith('browser_')) return 'browser'
+  return 'other'
+}
+
+/** Derive category totals from the auditable raw rows; never reassign old points. */
+function summarizeBreakdown(breakdown) {
+  const groups = new Map()
+  for (const row of breakdown.rows) {
+    const category = classifyActivity(row.kind, row.name)
+    const group = groups.get(category) ?? { category, count: 0, points: 0 }
+    group.count += row.count
+    group.points += row.points
+    groups.set(category, group)
+  }
+  return [...groups.values()].sort((a, b) => b.points - a.points || CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category))
+}
+
 const RATINGS = ['ready', 'firstStep', 'warming', 'craft', 'masterpiece', 'astonishing']
 
 /** A playful appraisal of this turn's activity, with optional semantic moderation. */
@@ -79,6 +109,10 @@ function ratingForTurn({ points, completed, failed = false, jevChoice, probabili
 function candidateFromEvent(event) {
   if (!event || typeof event.seq !== 'number') return null
   if (event.type === 'turn/start') return { seq: event.seq, kind: 'start', text: '' }
+  if (event.type === 'tool/ptc-dispatch') {
+    if (typeof event.data?.isError !== 'boolean') return null
+    return { seq: event.seq, kind: event.data.isError ? 'failure' : 'tool', text: '' }
+  }
   if (event.type === 'tool/result') {
     const failed = event.data?.error != null || event.data?.message?.content?.some?.(
       item => item?.type === 'tool-result' && item.isError === true,
@@ -97,6 +131,42 @@ function candidateFromEvent(event) {
     return text.trim() ? { seq: event.seq, kind: 'summary', text: text.trim().slice(0, 500) } : null
   }
   return null
+}
+
+/** Pair direct results and PTC sub-dispatches without crediting run_code twice. */
+function createActivityTracker(entries = []) {
+  const tracker = { calls: new Map(), ptcRoots: new Set(), ptcFailureRoots: new Set() }
+  for (const entry of entries) if (entry.type === 'event') observeActivity(tracker, entry.event)
+  return tracker
+}
+
+function observeActivity(tracker, event) {
+  if (!event) return null
+  if (event.type === 'tool/call') {
+    if (typeof event.data?.callId === 'string') tracker.calls.set(event.data.callId, event.data.name)
+    return null
+  }
+  const candidate = candidateFromEvent(event)
+  if (event.type === 'tool/ptc-dispatch') {
+    if (!candidate) return null
+    if (typeof event.data.rootCallId === 'string') {
+      tracker.ptcRoots.add(event.data.rootCallId)
+      if (candidate.kind === 'failure') tracker.ptcFailureRoots.add(event.data.rootCallId)
+    }
+    return { candidate, name: event.data.name ?? '' }
+  }
+  if (event.type === 'tool/result') {
+    const callId = event.data?.message?.source?.callId
+    const name = tracker.calls.get(callId) ?? ''
+    const hasSubcalls = tracker.ptcRoots.has(callId)
+    const subcallFailed = tracker.ptcFailureRoots.has(callId)
+    tracker.calls.delete(callId)
+    tracker.ptcRoots.delete(callId)
+    tracker.ptcFailureRoots.delete(callId)
+    if (!candidate || (hasSubcalls && (candidate.kind === 'tool' || subcallFailed))) return null
+    return { candidate, name }
+  }
+  return candidate ? { candidate, name: '' } : null
 }
 
 /** Deterministic streaks and cooldown. Failures reset; a summary does not add a point. */
@@ -213,17 +283,19 @@ function shouldTriggerEgg({ completed, failed, combo, turnPoints, now, lastEggAt
 const STYLE = `
   .rf-dsh{position:fixed;inset:0;z-index:70;pointer-events:none;font:600 13px/1.35 system-ui,-apple-system,sans-serif;color:#fff}
   .rf-dsh *{box-sizing:border-box}
-  .rf-dsh-toast{position:absolute;top:72px;left:50%;transform:translate(-50%,-12px) scale(.82);opacity:0;min-width:250px;max-width:min(470px,90vw);padding:15px 20px;border-radius:20px;text-align:center;background:linear-gradient(120deg,#7c3aed,#ec4899 48%,#f59e0b);box-shadow:0 14px 45px #7c3aed55,0 0 0 1px #ffffff77 inset;animation:rf-pop .28s cubic-bezier(.17,.89,.32,1.4) forwards;overflow:hidden}
+  .rf-dsh-toast{position:absolute;z-index:2;top:72px;left:50%;transform:translate(-50%,-12px) scale(.82);opacity:0;min-width:250px;width:min(400px,90vw);padding:15px 18px;border-radius:20px;text-align:center;background:linear-gradient(120deg,#7c3aed,#ec4899 48%,#f59e0b);box-shadow:0 14px 45px #7c3aed55,0 0 0 1px #ffffff77 inset;animation:rf-pop .28s cubic-bezier(.17,.89,.32,1.4) forwards;overflow:hidden}
   .rf-dsh-toast:after{content:'';position:absolute;inset:-50%;background:linear-gradient(110deg,transparent 35%,#ffffff55 48%,transparent 61%);transform:translateX(-80%);animation:rf-shine .65s ease-out .12s both}
   .rf-dsh-toast strong{display:block;font-size:23px;letter-spacing:.05em;text-shadow:0 2px 8px #4c1d9580}
-  .rf-dsh-toast span{display:block;margin-top:3px;font-weight:550}
+  .rf-dsh-toast>span{display:block;margin-top:3px;font-weight:550}
+  .rf-dsh-toast-gain{display:flex;justify-content:center;align-items:baseline;flex-wrap:wrap;gap:5px;margin-top:8px;font-size:12px}.rf-dsh-toast-gain b{color:#fff4a3;font-size:16px}.rf-dsh-toast-gain small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;opacity:.9}
+  .rf-dsh-toast-summary{display:grid;gap:4px;margin-top:9px;padding:7px 10px;border:1px solid #ffffff55;border-radius:11px;background:#14213b70;text-align:left}.rf-dsh-toast-row{display:flex;justify-content:space-between;gap:12px;font-size:12px}.rf-dsh-toast-row span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rf-dsh-toast-row b{flex:none;color:#fff4a3;font-variant-numeric:tabular-nums}
   .rf-dsh-toast[data-tier="super"],.rf-dsh-toast[data-tier="legendary"]{box-shadow:0 18px 60px #f59e0b77,0 0 0 2px #fff8 inset}
   .rf-dsh-confetti{position:absolute;top:90px;left:50%;font-size:20px;animation:rf-burst .8s ease-out forwards;transform-origin:center}
   .rf-dsh-panel{position:absolute;right:18px;bottom:18px;display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;max-width:calc(100vw - 36px);gap:7px;padding:7px 9px 7px 12px;border-radius:18px;background:#241743ed;border:1px solid #b493ff66;box-shadow:0 8px 24px #10062b66;pointer-events:auto;backdrop-filter:blur(14px)}
   .rf-dsh-controls{display:contents}
-  .rf-dsh-brand{display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap}.rf-dsh-combo{font-size:11px;color:#e9d5ff;white-space:nowrap}.rf-dsh-combo b{font-weight:700}.rf-dsh-toast em{display:block;margin-top:5px;font-size:15px;font-style:normal;color:#fff4a3}.rf-dsh-panel button,.rf-dsh-rules summary{border:0;border-radius:999px;min-width:30px;height:30px;padding:0 8px;color:#fff;background:#ffffff1f;cursor:pointer;font:inherit;display:grid;place-items:center}.rf-dsh-panel button[aria-pressed="true"]{background:#a855f7}.rf-dsh-panel button:disabled{opacity:.38;cursor:not-allowed}.rf-dsh-panel button:focus-visible,.rf-dsh-rules summary:focus-visible{outline:2px solid #facc15;outline-offset:2px}
+  .rf-dsh-brand{display:flex;align-items:center;gap:4px;font-size:12px;white-space:nowrap}.rf-dsh-combo{font-size:11px;color:#e9d5ff;white-space:nowrap}.rf-dsh-combo b{font-weight:700}.rf-dsh-panel button,.rf-dsh-rules summary{border:0;border-radius:999px;min-width:30px;height:30px;padding:0 8px;color:#fff;background:#ffffff1f;cursor:pointer;font:inherit;display:grid;place-items:center}.rf-dsh-panel button[aria-pressed="true"]{background:#a855f7}.rf-dsh-panel button:disabled{opacity:.38;cursor:not-allowed}.rf-dsh-panel button:focus-visible,.rf-dsh-rules summary:focus-visible{outline:2px solid #facc15;outline-offset:2px}
   .rf-dsh-rules summary{list-style:none}.rf-dsh-rules summary::-webkit-details-marker{display:none}.rf-dsh-rules[open] summary{background:#a855f7}.rf-dsh-rules-content{position:absolute;right:0;bottom:calc(100% + 10px);width:min(340px,calc(100vw - 36px));max-height:70vh;overflow:auto;padding:16px;border-radius:16px;background:#241743f5;border:1px solid #b493ff99;box-shadow:0 16px 38px #10062baa;font-size:12px;line-height:1.5}.rf-dsh-rules-content strong{display:block;margin-bottom:7px;color:#facc15;font-size:14px}.rf-dsh-rules-content ul{margin:0;padding-left:18px}.rf-dsh-rules-content li{margin:3px 0}.rf-dsh-rules-content p{margin:9px 0 0;color:#e9d5ff}
-  .rf-dsh-breakdown{margin-top:14px;padding:11px 0;border-top:1px solid #ffffff35;border-bottom:1px solid #ffffff35}.rf-dsh-breakdown-head,.rf-dsh-breakdown-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.rf-dsh-breakdown-head{margin-bottom:8px;color:#facc15;font-size:13px}.rf-dsh-breakdown-head strong{margin:0}.rf-dsh-breakdown-row{margin:5px 0;color:#e9d5ff}.rf-dsh-breakdown-row span{min-width:0;overflow-wrap:anywhere}.rf-dsh-breakdown-row b{flex:none;color:#fff;font-variant-numeric:tabular-nums}.rf-dsh-breakdown-note{font-size:11px}
+  .rf-dsh-breakdown{margin-top:14px;padding:11px 0;border-top:1px solid #ffffff35;border-bottom:1px solid #ffffff35}.rf-dsh-breakdown-head,.rf-dsh-breakdown-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.rf-dsh-breakdown-head{margin-bottom:8px;color:#facc15;font-size:13px}.rf-dsh-breakdown-head strong{margin:0}.rf-dsh-breakdown-row{margin:5px 0;color:#e9d5ff}.rf-dsh-breakdown-row span{min-width:0;overflow-wrap:anywhere}.rf-dsh-breakdown-row b{flex:none;color:#fff;font-variant-numeric:tabular-nums}.rf-dsh-breakdown-title{margin:10px 0 5px;color:#fff4a3;font-size:11px}.rf-dsh-breakdown-note{font-size:11px}
   @keyframes rf-pop{to{opacity:1;transform:translate(-50%,0) scale(1)}}@keyframes rf-shine{to{transform:translateX(80%)}}@keyframes rf-burst{to{opacity:0;transform:translate(var(--rf-x),var(--rf-y)) rotate(var(--rf-r))}}
   @media(prefers-reduced-motion:reduce){.rf-dsh-toast,.rf-dsh-toast:after,.rf-dsh-confetti{animation:none}.rf-dsh-toast{opacity:1;transform:translate(-50%,0)}.rf-dsh-confetti{display:none}}
   .rf-dsh{--rf-panel:#112846;--rf-mid:#06b6d4;--rf-end:#8b5cf6;--rf-accent:#38bdf8;--rf-opacity:94%}
@@ -278,9 +350,18 @@ window.__ModuleLoader__.load({
       en: { name: 'Rainbow Fart', points: 'Points', combo: 'Combo', rules: 'Scoring and rating rules', ruleTool: 'Successful tool call: 10 base points', ruleTurn: 'Completed turn: 20 base points, unless the turn had a failure', ruleMultiplier: 'Multiplier uses the new streak: 1–2 ×1, 3–4 ×2, 5–7 ×3, 8+ ×4', ruleReset: 'Successes within 90 seconds keep the streak. Failure resets it without deducting points.', ruleOther: 'Summaries, starts and previews score zero. Points are saved per session in this browser and survive refresh.', ruleRating: 'Each turn gets a rating from its points: 0 Ready, 1–29 First step, 30–79 Finding your stride, 80–159 Masterful, 160–279 Peak form, 280+ Astonishing. Failed turns say Regroup.', ruleJev: 'With Jev on: none caps at First step; steady caps at Finding your stride; breakthrough with probability ≥0.6 raises one tier. Ratings are playful feedback, not a code quality verdict.', latestReview: 'Latest rating', turnReview: 'Turn rating', ready: 'Ready to go', firstStep: 'First step', warming: 'Finding your stride', craft: 'Masterful', masterpiece: 'Peak form', astonishing: 'Astonishing', recover: 'Regroup', sound: 'Sound', jev: 'Jev judgment', jevMissing: 'Set TypeSafe credentials to enable Jev', soundOff: 'Turn sound on', soundOn: 'Turn sound off', preview: 'Preview combo', previewMessage: 'Preview: feel the rhythm!', previewReview: 'Preview rating' },
     }
     const scoreText = {
-      zh: { total: '当前总分', previous: '此前累计（无逐项记录）', complete: '完成轮次', unknown: '未识别工具', other: '其他工具', note: '各项为实际得分，已计入连击倍率；旧积分无法准确反推工具来源。', empty: '新得分将在这里按工具汇总，例如 web_search ×3 +120（仅示例，不计入积分）。' },
-      en: { total: 'Current total', previous: 'Earlier points (no itemized history)', complete: 'Completed turns', unknown: 'Unknown tool', other: 'Other tools', note: 'Amounts include combo multipliers. Earlier points cannot be reliably attributed to tools.', empty: 'New points will be grouped by tool, e.g. web_search ×3 +120 (example only).' },
+      zh: { total: '当前总分', previous: '此前累计（无逐项记录）', complete: '完成轮次', unknown: '未识别工具', other: '其他工具', groups: '活动分类', tools: '原始工具明细', note: '各项为实际得分，已计入连击倍率；旧积分无法准确反推工具来源。', empty: '新得分将在这里按活动与工具汇总；预览不计分。' },
+      en: { total: 'Current total', previous: 'Earlier points (no itemized history)', complete: 'Completed turns', unknown: 'Unknown tool', other: 'Other tools', groups: 'Activity categories', tools: 'Exact tool names', note: 'Amounts include combo multipliers. Earlier points cannot be reliably attributed to tools.', empty: 'New points will be grouped by activity and tool. Previews do not score.' },
     }
+    const activityText = {
+      zh: { web: 'Web 检索', skill: 'Skill', files: '文件操作', terminal: '终端命令', browser: '浏览器', complete: '完成轮次', other: '其他工具', unknown: '未识别工具', gain: '本次得分', turnGain: '本轮积分', preview: '示例明细 · 不计分', turnSummary: '本轮明细' },
+      en: { web: 'Web search', skill: 'Skill', files: 'Files', terminal: 'Terminal', browser: 'Browser', complete: 'Turn completed', other: 'Other tools', unknown: 'Unknown tool', gain: 'This gain', turnGain: 'Turn points', preview: 'Example · no points earned', turnSummary: 'This turn' },
+    }
+    const previewRows = [
+      { category: 'web', count: 1, points: 20 },
+      { category: 'skill', count: 1, points: 10 },
+      { category: 'files', count: 1, points: 10 },
+    ]
     const settingsText = {
       zh: {
         settings: '自定义设置', close: '关闭', appearance: '外观与动效', theme: '主题', ocean: '深海', aurora: '极光', candy: '糖果', minimal: '极简', panelPlacement: '面板布局', leftDock: '左侧竖栏', bottomBar: '右下角横条', accent: '点缀色', opacity: '面板不透明度', motion: '动效强度', off: '关闭', soft: '轻柔', full: '完整', toastAnimation: '弹窗动效', pop: '弹出', slide: '滑入', fade: '淡入', toastPosition: '提示位置', top: '顶部', center: '中央', bottom: '底部',
@@ -316,16 +397,6 @@ window.__ModuleLoader__.load({
     }
     function saveBreakdown(sessionId, value) {
       try { localStorage.setItem(`rainbow-fart-dsh.breakdown.${sessionId}`, JSON.stringify(value)) } catch { /* private mode */ }
-    }
-    function pendingToolCalls(entries) {
-      const calls = new Map()
-      for (const entry of entries) {
-        if (entry.type !== 'event') continue
-        const event = entry.event
-        if (event.type === 'tool/call' && typeof event.data?.callId === 'string') calls.set(event.data.callId, event.data.name)
-        else if (event.type === 'tool/result') calls.delete(event.data?.message?.source?.callId)
-      }
-      return calls
     }
     const ratingKeys = new Set(['ready', 'firstStep', 'warming', 'craft', 'masterpiece', 'astonishing', 'recover'])
     function readReview(sessionId) {
@@ -416,19 +487,21 @@ window.__ModuleLoader__.load({
       const [count, setCount] = useState(0)
       const [review, setReview] = useState(() => readReview(sessionId))
       const combo = useRef(null)
-      const toolCalls = useRef(null)
+      const activityTracker = useRef(null)
       const breakdown = useRef(null)
+      const turnBreakdown = useRef(initialBreakdown())
       if (combo.current === null) {
         const entries = source?.getSnapshot().entries || []
         const baseline = initialCombo(readPoints(sessionId))
         // Opening an existing Session must not celebrate old history.
         baseline.seenSeq = latestDurableSeq(entries)
         combo.current = baseline
-        toolCalls.current = pendingToolCalls(entries)
+        activityTracker.current = createActivityTracker(entries)
         breakdown.current = readBreakdown(sessionId, baseline.points)
       }
       const [points, setPoints] = useState(() => combo.current.points)
       const [scoreBreakdown, setScoreBreakdown] = useState(() => breakdown.current)
+      const activitySummary = useMemo(() => summarizeBreakdown(scoreBreakdown), [scoreBreakdown])
       const summary = useRef('')
       const reviewRequest = useRef(0)
       const audio = useRef(null)
@@ -445,6 +518,7 @@ window.__ModuleLoader__.load({
       const language = () => document.documentElement.lang.startsWith('zh') ? 'zh' : 'en'
       const S = key => settingsText[language()][key]
       const B = key => scoreText[language()][key]
+      const A = key => activityText[language()][key]
       const sound = settings.soundEnabled
       const jev = settings.jevEnabled
 
@@ -531,8 +605,9 @@ window.__ModuleLoader__.load({
         return () => { observer?.disconnect(); window.removeEventListener('resize', measure) }
       }, [])
 
-      const show = (message, tier, value, earned = 0, isReview = false, reviewSeq = null) => {
-        setToast({ id: Date.now() + Math.random(), message, tier, value, earned, isReview, reviewSeq })
+      const show = ({ message, tier, value, earned = 0, isReview = false, reviewSeq = null,
+        activity = null, name = '', summary = [], preview = false }) => {
+        setToast({ id: Date.now() + Math.random(), message, tier, value, earned, isReview, reviewSeq, activity, name, summary, preview })
         play(tier, audio, settings)
         clearTimeout(timer.current)
         timer.current = setTimeout(() => { if (live.current) setToast(null) }, 2700)
@@ -556,28 +631,19 @@ window.__ModuleLoader__.load({
         lastRevision.current = snapshot.revision
         if (snapshot.change.kind === 'replace') {
           combo.current.seenSeq = latestDurableSeq(snapshot.entries, combo.current.seenSeq)
-          toolCalls.current = pendingToolCalls(snapshot.entries)
+          activityTracker.current = createActivityTracker(snapshot.entries)
           return
         }
         const entries = newDurableEntries(snapshot, previousRevision, combo.current.seenSeq)
         for (const entry of entries) {
           if (entry.type !== 'event') continue
-          if (entry.event.type === 'tool/call') {
-            const { callId, name } = entry.event.data || {}
-            if (typeof callId === 'string') toolCalls.current.set(callId, name)
-            continue
-          }
-          const candidate = candidateFromEvent(entry.event)
-          if (!candidate) continue
-          let toolName = ''
-          if (entry.event.type === 'tool/result') {
-            const callId = entry.event.data?.message?.source?.callId
-            toolName = toolCalls.current.get(callId) || ''
-            toolCalls.current.delete(callId)
-          }
+          const observed = observeActivity(activityTracker.current, entry.event)
+          if (!observed) continue
+          const { candidate, name: toolName } = observed
           if (candidate.kind === 'start') {
             summary.current = ''
             reviewRequest.current += 1
+            turnBreakdown.current = initialBreakdown()
           }
           if (candidate.kind === 'summary') summary.current = candidate.text
           const result = advanceCombo(combo.current, candidate, Date.now())
@@ -589,10 +655,12 @@ window.__ModuleLoader__.load({
             breakdown.current = addBreakdown(breakdown.current, candidate.kind, toolName, result.earned)
             setScoreBreakdown(breakdown.current)
             saveBreakdown(sessionId, breakdown.current)
+            turnBreakdown.current = addBreakdown(turnBreakdown.current, candidate.kind, toolName, result.earned)
           }
           if (entry.event.type === 'turn/end') {
             const requestId = ++reviewRequest.current
             const turnSummary = summary.current
+            const turnSummaryRows = summarizeBreakdown(turnBreakdown.current).slice(0, 3)
             summary.current = ''
             let shownRating = null
             const finishReview = (answer, announce = false) => {
@@ -621,7 +689,8 @@ window.__ModuleLoader__.load({
               shownRating = rating.key
               setReview(rating.key)
               save(`review.${sessionId}`, rating.key)
-              if (announce) show(t(rating.key), rating.tier, result.state.count, result.state.turnPoints, true, candidate.seq)
+              if (announce) show({ message: t(rating.key), tier: rating.tier, value: result.state.count,
+                earned: result.state.turnPoints, isReview: true, reviewSeq: candidate.seq, summary: turnSummaryRows })
               else setToast(current => current?.reviewSeq === candidate.seq
                 ? { ...current, message: t(rating.key), tier: rating.tier } : current)
             }
@@ -636,7 +705,10 @@ window.__ModuleLoader__.load({
             continue
           }
           if (!result.show) continue
-          show(phraseFor(candidate.kind, result.tier, result.state.count, language()), result.tier, result.state.count, result.earned)
+          show({ message: phraseFor(candidate.kind, result.tier, result.state.count, language()),
+            tier: result.tier, value: result.state.count, earned: result.earned,
+            activity: classifyActivity(candidate.kind, toolName), name: toolName,
+            summary: summarizeBreakdown(turnBreakdown.current).slice(0, 3) })
         }
       }, [snapshot, jev, available, sound])
 
@@ -738,7 +810,14 @@ window.__ModuleLoader__.load({
         toast && h('div', { key: toast.id, className: 'rf-dsh-toast', 'data-tier': toast.tier, role: 'status', 'aria-live': 'polite' },
           h('strong', null, toast.isReview ? toast.message : toast.value >= 3 ? `${toast.value}× COMBO` : '✨ NICE!'),
           h('span', null, toast.isReview ? t('turnReview') : toast.message),
-          toast.earned > 0 && h('em', null, `+${toast.earned} ${t('points')}`)),
+          (toast.earned > 0 || toast.preview) && h('div', { className: 'rf-dsh-toast-gain' },
+            h('span', null, toast.preview ? A('preview') : toast.isReview ? A('turnGain') : A('gain')),
+            !toast.preview && h('b', null, `+${toast.earned}`),
+            !toast.preview && toast.activity && h('small', { title: toast.name },
+              `· ${A(toast.activity)}${toast.name ? ` (${toast.name})` : ''}`)),
+          toast.summary.length > 0 && h('div', { className: 'rf-dsh-toast-summary', 'aria-label': A('turnSummary') },
+            toast.summary.map(row => h('div', { className: 'rf-dsh-toast-row', key: row.category },
+              h('span', null, `${A(row.category)} ×${row.count}`), h('b', null, `+${row.points}`))))),
         toast && toast.value >= 3 && Array.from({ length: 8 }, (_, i) => h('span', {
           key: `${toast.id}-${i}`, className: 'rf-dsh-confetti', 'aria-hidden': 'true',
           style: { '--rf-x': `${(i - 3.5) * 36}px`, '--rf-y': `${-25 - (i % 3) * 36}px`, '--rf-r': `${i * 57}deg`, color: ['#facc15', '#4ade80', '#38bdf8', '#fb7185'][i % 4] },
@@ -756,6 +835,11 @@ window.__ModuleLoader__.load({
                 h('div', { className: 'rf-dsh-breakdown-head' }, h('strong', null, B('total')), h('strong', null, h(RollingNumber, { value: points, enabled: settings.motion !== 'off', fromZero: true }))),
                 review && h('div', { className: 'rf-dsh-breakdown-row' }, h('span', null, t('latestReview')), h('b', null, t(review))),
                 scoreBreakdown.previousPoints > 0 && h('div', { className: 'rf-dsh-breakdown-row' }, h('span', null, B('previous')), h('b', null, h(RollingNumber, { value: scoreBreakdown.previousPoints, enabled: settings.motion !== 'off', fromZero: true }))),
+                activitySummary.length > 0 && h('div', { className: 'rf-dsh-breakdown-title' }, B('groups')),
+                activitySummary.map(row => h('div', { className: 'rf-dsh-breakdown-row', key: row.category },
+                  h('span', null, `${A(row.category)} ×${row.count}`),
+                  h('b', null, `+`, h(RollingNumber, { value: row.points, enabled: settings.motion !== 'off', fromZero: true })))),
+                scoreBreakdown.rows.length > 0 && h('div', { className: 'rf-dsh-breakdown-title' }, B('tools')),
                 scoreBreakdown.rows.map(row => h('div', { className: 'rf-dsh-breakdown-row', key: `${row.kind}:${row.name}` },
                   h('span', null, `${row.kind === 'complete' ? B('complete') : row.name === 'unknown' || row.name === 'other' ? B(row.name) : row.name} ×${row.count}`),
                   h('b', null, `+`, h(RollingNumber, { value: row.points, enabled: settings.motion !== 'off', fromZero: true })))),
@@ -767,11 +851,13 @@ window.__ModuleLoader__.load({
               h('p', null, t('ruleJev')))),
           h('button', {
             type: 'button', 'aria-label': t('preview'), title: t('preview'),
-            onClick: () => show(t('previewMessage'), 'combo', 3),
+            onClick: () => show({ message: t('previewMessage'), tier: 'combo', value: 3,
+              preview: true, summary: previewRows }),
           }, '✦'),
           h('button', {
             type: 'button', 'aria-label': t('previewReview'), title: t('previewReview'),
-            onClick: () => show(t('craft'), 'super', 0, 0, true),
+            onClick: () => show({ message: t('craft'), tier: 'super', value: 0,
+              isReview: true, preview: true, summary: previewRows }),
           }, '★'),
           h('button', {
             type: 'button', 'aria-label': sound ? t('soundOn') : t('soundOff'),

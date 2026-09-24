@@ -1,6 +1,6 @@
 {
   "name": "rainbow-fart-dsh",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "private": true,
   "type": "module",
   "description": "A playful, optional praise and combo layer for DSH Web coding sessions",

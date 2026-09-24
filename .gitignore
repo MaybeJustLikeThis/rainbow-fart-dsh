@@ -1,6 +1,7 @@
 node_modules/
 *.tgz
 *.log
+.playwright-cli/
 .DS_Store
 .env
 .env.*

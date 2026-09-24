@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { addBreakdown, advanceCombo, candidateFromEvent, initialBreakdown, initialCombo, latestDurableSeq, newDurableEntries, ratingForTurn, reconcileBreakdown, scoreFor } from '../core.js'
+import { addBreakdown, advanceCombo, candidateFromEvent, classifyActivity, createActivityTracker, initialBreakdown, initialCombo, latestDurableSeq, newDurableEntries, observeActivity, ratingForTurn, reconcileBreakdown, scoreFor, summarizeBreakdown } from '../core.js'
 
 test('successes build a combo, failures break it, and repeated events do not score twice', () => {
   let state = initialCombo()
@@ -74,6 +74,51 @@ test('score breakdown groups actual combo-adjusted gains and keeps older points 
   assert.equal(state.points, 5360)
   assert.deepEqual(reconcileBreakdown(JSON.parse(JSON.stringify(breakdown)), state.points), breakdown)
   assert.deepEqual(reconcileBreakdown(breakdown, state.points + 10), initialBreakdown(state.points + 10))
+})
+
+test('ordinary and PTC tool calls use the underlying tool name without double scoring run_code', () => {
+  const tracker = createActivityTracker()
+  const events = [
+    { seq: 1, type: 'tool/call', data: { callId: 'direct', name: 'web_search' } },
+    { seq: 2, type: 'tool/result', data: { message: { source: { callId: 'direct' }, content: [{ type: 'tool-result', isError: false }] } } },
+    { seq: 3, type: 'tool/call', data: { callId: 'outer', name: 'run_code' } },
+    { seq: 4, type: 'tool/ptc-dispatch', data: { rootCallId: 'outer', subCallId: 'sub1', name: 'skill', isError: false } },
+    { seq: 5, type: 'tool/ptc-dispatch', data: { rootCallId: 'outer', subCallId: 'sub2', name: 'web_search', isError: false } },
+    { seq: 6, type: 'tool/result', data: { message: { source: { callId: 'outer' }, content: [{ type: 'tool-result', isError: false }] } } },
+  ]
+  const scored = events.map(event => observeActivity(tracker, event)).filter(Boolean)
+  assert.deepEqual(scored.map(item => [item.candidate.kind, item.name]), [
+    ['tool', 'web_search'], ['tool', 'skill'], ['tool', 'web_search'],
+  ])
+  assert.equal(observeActivity(tracker, { seq: 7, type: 'tool/call', data: { callId: 'empty', name: 'run_code' } }), null)
+  assert.equal(observeActivity(tracker, { seq: 8, type: 'tool/result', data: { message: { source: { callId: 'empty' }, content: [] } } }).candidate.kind, 'tool')
+  const replayed = createActivityTracker(events.slice(0, 5).map(event => ({ type: 'event', event })))
+  assert.equal(observeActivity(replayed, events[5]), null)
+})
+
+test('PTC failures break combos and category summaries preserve exact earned points', () => {
+  const tracker = createActivityTracker()
+  observeActivity(tracker, { seq: 1, type: 'tool/call', data: { callId: 'outer', name: 'run_code' } })
+  const failure = observeActivity(tracker, { seq: 2, type: 'tool/ptc-dispatch', data: { rootCallId: 'outer', name: 'skill', isError: true } })
+  assert.equal(failure.candidate.kind, 'failure')
+  assert.equal(observeActivity(tracker, { seq: 3, type: 'tool/result', data: { message: { source: { callId: 'outer' }, content: [] } } }), null)
+  const duplicate = createActivityTracker()
+  observeActivity(duplicate, { seq: 4, type: 'tool/call', data: { callId: 'failed', name: 'run_code' } })
+  observeActivity(duplicate, { seq: 5, type: 'tool/ptc-dispatch', data: { rootCallId: 'failed', name: 'web_search', isError: true } })
+  assert.equal(observeActivity(duplicate, { seq: 6, type: 'tool/result', data: { message: { source: { callId: 'failed' }, content: [{ type: 'tool-result', isError: true }] } } }), null)
+  assert.equal(classifyActivity('tool', 'mcp__web__web_search'), 'web')
+  assert.equal(classifyActivity('tool', 'skill'), 'skill')
+  assert.equal(classifyActivity('tool', 'todo_write'), 'other')
+  let breakdown = initialBreakdown(90)
+  for (const [kind, name, points] of [
+    ['tool', 'web_search', 20], ['tool', 'web_fetch', 10], ['tool', 'skill', 40],
+    ['tool', 'read', 10], ['tool', 'todo_write', 10], ['complete', '', 60],
+  ]) breakdown = addBreakdown(breakdown, kind, name, points)
+  const summary = summarizeBreakdown(breakdown)
+  assert.deepEqual(summary.map(row => [row.category, row.count, row.points]), [
+    ['complete', 1, 60], ['skill', 1, 40], ['web', 2, 30], ['files', 1, 10], ['other', 1, 10],
+  ])
+  assert.equal(summary.reduce((sum, row) => sum + row.points, breakdown.previousPoints), 240)
 })
 
 test('a turn with a recovered tool failure still gets no completion points', () => {

@@ -62,6 +62,36 @@ export function addBreakdown(breakdown, kind, name, earned) {
   return { previousPoints: breakdown.previousPoints, rows }
 }
 
+const CATEGORY_ORDER = ['web', 'skill', 'files', 'terminal', 'browser', 'complete', 'other', 'unknown']
+
+/** A small, explicit vocabulary keeps new DSH tools visible under "other" until classified. */
+export function classifyActivity(kind, rawName) {
+  if (kind === 'complete') return 'complete'
+  if (rawName === 'other') return 'other'
+  if (typeof rawName !== 'string' || !rawName.trim() || rawName === 'unknown') return 'unknown'
+  const name = rawName.trim().toLowerCase().replace(/[.\-:/]+/gu, '_').replace(/_+/gu, '_')
+  const is = value => name === value || name.endsWith(`_${value}`)
+  if (['web_search', 'web_fetch', 'search_web', 'fetch_web'].some(is)) return 'web'
+  if (['skill', 'load_skill', 'use_skill'].some(is)) return 'skill'
+  if (['read', 'write', 'edit'].includes(name) || ['glob', 'grep', 'apply_patch', 'read_file', 'write_file', 'edit_file', 'str_replace_editor', 'fs_read', 'fs_write', 'fs_edit'].some(is)) return 'files'
+  if (['bash', 'pwsh', 'exec_command', 'terminal_open', 'terminal_send', 'terminal_read'].some(is)) return 'terminal'
+  if (name.startsWith('stagehand_') || name.startsWith('playwright_') || name.startsWith('browser_')) return 'browser'
+  return 'other'
+}
+
+/** Derive category totals from the auditable raw rows; never reassign old points. */
+export function summarizeBreakdown(breakdown) {
+  const groups = new Map()
+  for (const row of breakdown.rows) {
+    const category = classifyActivity(row.kind, row.name)
+    const group = groups.get(category) ?? { category, count: 0, points: 0 }
+    group.count += row.count
+    group.points += row.points
+    groups.set(category, group)
+  }
+  return [...groups.values()].sort((a, b) => b.points - a.points || CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category))
+}
+
 const RATINGS = ['ready', 'firstStep', 'warming', 'craft', 'masterpiece', 'astonishing']
 
 /** A playful appraisal of this turn's activity, with optional semantic moderation. */
@@ -78,6 +108,10 @@ export function ratingForTurn({ points, completed, failed = false, jevChoice, pr
 export function candidateFromEvent(event) {
   if (!event || typeof event.seq !== 'number') return null
   if (event.type === 'turn/start') return { seq: event.seq, kind: 'start', text: '' }
+  if (event.type === 'tool/ptc-dispatch') {
+    if (typeof event.data?.isError !== 'boolean') return null
+    return { seq: event.seq, kind: event.data.isError ? 'failure' : 'tool', text: '' }
+  }
   if (event.type === 'tool/result') {
     const failed = event.data?.error != null || event.data?.message?.content?.some?.(
       item => item?.type === 'tool-result' && item.isError === true,
@@ -96,6 +130,42 @@ export function candidateFromEvent(event) {
     return text.trim() ? { seq: event.seq, kind: 'summary', text: text.trim().slice(0, 500) } : null
   }
   return null
+}
+
+/** Pair direct results and PTC sub-dispatches without crediting run_code twice. */
+export function createActivityTracker(entries = []) {
+  const tracker = { calls: new Map(), ptcRoots: new Set(), ptcFailureRoots: new Set() }
+  for (const entry of entries) if (entry.type === 'event') observeActivity(tracker, entry.event)
+  return tracker
+}
+
+export function observeActivity(tracker, event) {
+  if (!event) return null
+  if (event.type === 'tool/call') {
+    if (typeof event.data?.callId === 'string') tracker.calls.set(event.data.callId, event.data.name)
+    return null
+  }
+  const candidate = candidateFromEvent(event)
+  if (event.type === 'tool/ptc-dispatch') {
+    if (!candidate) return null
+    if (typeof event.data.rootCallId === 'string') {
+      tracker.ptcRoots.add(event.data.rootCallId)
+      if (candidate.kind === 'failure') tracker.ptcFailureRoots.add(event.data.rootCallId)
+    }
+    return { candidate, name: event.data.name ?? '' }
+  }
+  if (event.type === 'tool/result') {
+    const callId = event.data?.message?.source?.callId
+    const name = tracker.calls.get(callId) ?? ''
+    const hasSubcalls = tracker.ptcRoots.has(callId)
+    const subcallFailed = tracker.ptcFailureRoots.has(callId)
+    tracker.calls.delete(callId)
+    tracker.ptcRoots.delete(callId)
+    tracker.ptcFailureRoots.delete(callId)
+    if (!candidate || (hasSubcalls && (candidate.kind === 'tool' || subcallFailed))) return null
+    return { candidate, name }
+  }
+  return candidate ? { candidate, name: '' } : null
 }
 
 /** Deterministic streaks and cooldown. Failures reset; a summary does not add a point. */
