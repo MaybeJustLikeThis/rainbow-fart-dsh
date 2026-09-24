@@ -1,0 +1,4 @@
+# Local source checkout: dsh web --patch /absolute/path/to/local.patch.yml
+- insert:
+    - id: rainbow-fart-dsh
+      name: './index.js'
