@@ -2,14 +2,14 @@
 
 给 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) Web 会话添加轻量的连击、积分、轮次评价和可选彩蛋。插件只呈现趣味反馈，不改变 Agent 的工具执行或会话日志；积分和评价不代表代码质量、测试或部署结果。
 
-> 当前版本：0.5.5。针对 DSH 0.1.7-rc.1 验证。DSH 仍处于开发预览，后续版本可能调整插件接口。
+> 当前版本：0.5.6。针对 DSH 0.1.7-rc.1 验证。DSH 仍处于开发预览，后续版本可能调整插件接口。
 
 ## 功能
 
 - 成功工具调用和无失败的完成轮次计分；失败打断连击。得分弹窗显示本次加分和本轮常见活动分类；? 面板展示规则、总分、最近评价、分类汇总和原始工具明细。
 - 宽屏左侧窄竖条；空间不足时自动回退右下角横条。支持深海、极光、糖果、极简主题，以及颜色、透明度和动画设置。
 - 默认静音；可选三种合成音或上传音频。支持预览、双侧烟花与鲸鱼娘彩蛋，也可更换角色图。
-- 可选的 Jev 轮次判断。没有 TypeSafe 凭据时，本地计分、评价和预览仍可使用。
+- 可选的 Jev 轮次判断。可在插件设置里配置 TypeSafe API 密钥；没有密钥时，本地计分、评价和预览仍可使用。
 
 ## 安装
 
@@ -17,7 +17,7 @@
 
 ~~~sh
 npm install -g @deepseek-ai/dsh@0.1.7-rc.1
-dsh plugin --profile web add github:MaybeJustLikeThis/rainbow-fart-dsh#v0.5.5
+dsh plugin --profile web add github:MaybeJustLikeThis/rainbow-fart-dsh#v0.5.6
 dsh --profile web --dump-config
 dsh web
 ~~~
@@ -58,7 +58,11 @@ dsh plugin --profile web add .
 
 ## 可选 Jev
 
-在 DSH Host 进程设置 TYPESAFE_API_KEY 或 TYPESAFE_API_KEY_FILE。也可以在插件 patch 行的 config 中设置 apiKeyFile、model（默认 jev-1.13.0）和 timeoutMs（默认 2500）。密钥只由 Host 读取，不发送给浏览器。开启 Jev 后，插件最多发送最近一条助手文本的 500 字符摘要给 TypeSafe；不想发送时保持关闭即可。
+点击插件的 **J** 按钮或 **⚙ → 语义判断**，在「TypeSafe API 密钥」输入框粘贴密钥并保存，然后手动开启「启用 Jev 辅助判断」。未配置时 Jev 保持关闭，本地计分和评价继续工作。设置页只显示密钥是否存在，**不验证密钥有效性**；实际 Jev 请求需要有效的 TypeSafe 凭据。
+
+密钥经 DSH 已认证的本机接口写入 [DSH 凭据服务](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/credentials/credentials-local/README.md)，默认保存在 `$DSH_HOME/.credentials.yaml`；插件不会将密钥写入浏览器 localStorage，也不会把密钥返回给页面。可在同一设置页删除密钥。若由 DSH 启动环境提供密钥，设置页显示只读状态，应在启动环境中修改。原有 `TYPESAFE_API_KEY`、`TYPESAFE_API_KEY_FILE` 以及插件配置中的 `apiKeyFile`、`model`（默认 `jev-1.13.0`）和 `timeoutMs`（默认 2500）继续可用。
+
+开启 Jev 后，插件最多发送最近一条助手文本的 500 字符摘要给 TypeSafe；不想发送时保持关闭即可。密钥保存、删除或更换后无需重启 DSH。
 
 ## 开发与验证
 

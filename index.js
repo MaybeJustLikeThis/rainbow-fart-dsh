@@ -1,11 +1,12 @@
-/** Rainbow Fart-DSH Host companion. The API key never reaches the browser. */
+/** Rainbow Fart-DSH Host companion. Credential reads and Jev requests stay on Host. */
 import { readFileSync } from 'node:fs'
 export const name = 'rainbow-fart-dsh'
-export const inject = ['connection']
+export const inject = ['connection', 'credentials']
 
 const PATH = '/api/rainbow-fart.judge'
 const MASCOT_PATH = '/api/rainbow-fart.mascot'
 const ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
+const CREDENTIAL_REF = 'TYPESAFE_API_KEY'
 const ALLOWED = new Set(['none', 'steady', 'breakthrough'])
 
 export function apply(ctx, rawConfig = {}) {
@@ -24,9 +25,9 @@ export function apply(ctx, rawConfig = {}) {
   }
   ctx.effect(() => ctx.connection.fetch.register({
     path: PATH,
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     requestBody: 'buffered',
-    fetch: request => handle(request, { model, timeoutMs, apiKeyFile }),
+    fetch: request => handle(request, { model, timeoutMs, apiKeyFile }, { fetch, env: process.env, credentials: ctx.credentials }),
   }), 'rainbow-fart-dsh: authenticated Jev route')
   ctx.effect(() => ctx.connection.fetch.register({
     path: MASCOT_PATH,
@@ -38,7 +39,7 @@ export function apply(ctx, rawConfig = {}) {
   }), 'rainbow-fart-dsh: mascot image')
 }
 
-function resolveKey(config, env) {
+function resolveLegacyKey(config, env) {
   if (typeof env.TYPESAFE_API_KEY === 'string' && env.TYPESAFE_API_KEY.trim()) return env.TYPESAFE_API_KEY.trim()
   if (!config.apiKeyFile) return undefined
   try {
@@ -49,10 +50,39 @@ function resolveKey(config, env) {
   } catch { return undefined }
 }
 
+async function credentialStatus(config, deps) {
+  const info = await deps.credentials?.describe(CREDENTIAL_REF)
+  return { jevAvailable: info?.configured === true || Boolean(resolveLegacyKey(config, deps.env)), writable: info?.writable === true }
+}
+
 export async function handle(request, config, deps = { fetch, env: process.env }) {
-  const key = resolveKey(config, deps.env)
-  if (request.method === 'GET') return Response.json({ jevAvailable: Boolean(key) }, { headers: { 'cache-control': 'no-store' } })
+  if (request.method === 'GET') return Response.json(await credentialStatus(config, deps), { headers: { 'cache-control': 'no-store' } })
+  if (request.method === 'PUT' || request.method === 'DELETE') {
+    const status = await credentialStatus(config, deps)
+    if (request.method === 'PUT') {
+      if (Number(request.headers.get('content-length') ?? '0') > 4096) return new Response('payload too large', { status: 413 })
+      let input
+      try {
+        const body = await request.text()
+        if (body.length > 4096) return new Response('payload too large', { status: 413 })
+        input = JSON.parse(body)
+      } catch { return new Response('invalid JSON', { status: 400 }) }
+      const value = input?.apiKey
+      if (typeof value !== 'string' || !value || value.length > 2048 || /\s/u.test(value)) {
+        return new Response('invalid API key', { status: 400 })
+      }
+      if (!status.writable) return new Response('credential is read-only', { status: 409 })
+      try { await deps.credentials.set(CREDENTIAL_REF, value) }
+      catch { return new Response('credential could not be saved', { status: 503 }) }
+    } else {
+      if (!status.writable) return new Response('credential is read-only', { status: 409 })
+      try { await deps.credentials.unset(CREDENTIAL_REF) }
+      catch { return new Response('credential could not be removed', { status: 503 }) }
+    }
+    return Response.json(await credentialStatus(config, deps), { headers: { 'cache-control': 'no-store' } })
+  }
   if (request.method !== 'POST') return new Response('method not allowed', { status: 405 })
+  const key = (await deps.credentials?.resolve(CREDENTIAL_REF))?.value || resolveLegacyKey(config, deps.env)
   if (!key) return Response.json({ error: 'Jev key unavailable' }, { status: 409 })
   if (Number(request.headers.get('content-length') ?? '0') > 4096) return new Response('payload too large', { status: 413 })
   let input

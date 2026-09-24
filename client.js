@@ -327,6 +327,7 @@ const STYLE = `
   .rf-dsh[data-docked="true"][data-egg-active="true"] .rf-dsh-panel{opacity:0;pointer-events:none}
   @media(prefers-reduced-motion:reduce){.rf-dsh[data-docked="true"] .rf-dsh-panel{transition:none}}
   .rf-dsh-settings-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.rf-dsh-settings-head strong{font-size:16px}.rf-dsh-settings h3{margin:14px 0 7px;color:#bdefff;font-size:12px}.rf-dsh-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.rf-dsh-field{display:flex;flex-direction:column;gap:4px;min-width:0}.rf-dsh-field span{color:#dbeafe}.rf-dsh-field input,.rf-dsh-field select{width:100%;min-width:0;height:31px;padding:4px 7px;border:1px solid #ffffff55;border-radius:8px;background:#0b1733;color:#fff;font:inherit}.rf-dsh-field input[type="color"]{padding:2px}.rf-dsh-field input[type="range"]{padding:0}.rf-dsh-field input[type="checkbox"]{width:auto;height:auto;accent-color:var(--rf-accent)}.rf-dsh-check{display:flex;align-items:center;gap:7px;margin:6px 0}.rf-dsh-settings button{border:1px solid #ffffff55;border-radius:9px;padding:6px 10px;color:#fff;background:#ffffff1e;cursor:pointer;font:inherit}.rf-dsh-settings-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}.rf-dsh-settings-note{margin:6px 0;color:#cbd5e1;font-size:11px}.rf-dsh-settings-error{margin:8px 0;color:#fecaca}.rf-dsh-file{display:block;margin-top:7px}.rf-dsh-file input{margin-top:4px;max-width:100%;font:inherit}
+  .rf-dsh-settings button:disabled{opacity:.45;cursor:not-allowed}.rf-dsh-credential{margin:8px 0 10px;padding:11px;border:1px solid #ffffff35;border-radius:12px;background:#09162f88}.rf-dsh-credential-state{margin:0 0 9px;color:#facc15;font-weight:700}.rf-dsh-credential-state[data-ready="true"]{color:#86efac}.rf-dsh-credential .rf-dsh-settings-actions{margin-top:8px}
   .rf-dsh-egg-zone{position:absolute;top:24%;height:59%;overflow:visible;pointer-events:none}.rf-dsh-egg-zone[data-side="right"]{transform:scaleX(-1)}.rf-dsh-firework{position:absolute;width:7px;height:7px;border-radius:50%;background:var(--rf-accent);box-shadow:0 0 12px var(--rf-accent),0 0 25px var(--rf-accent)}.rf-dsh-firework:before{content:'';position:absolute;left:-47px;top:-47px;width:100px;height:100px;border:2px solid var(--rf-accent);border-radius:50%;opacity:0;animation:rf-ring 1.3s ease-out var(--rf-burst-delay) forwards}.rf-dsh-spark{position:absolute;left:0;top:0;width:8px;height:8px;border-radius:50%;background:var(--rf-spark);box-shadow:0 0 10px var(--rf-spark),0 0 20px var(--rf-spark);opacity:0;animation:rf-spark 1.5s ease-out var(--rf-delay) forwards}.rf-dsh-egg-mascot{position:absolute;left:50%;bottom:5%;max-width:90%;height:var(--rf-mascot-size);max-height:55%;object-fit:contain;transform:translateX(-50%);filter:drop-shadow(0 8px 18px #0ea5e966);animation:rf-mascot .65s ease-out both}.rf-dsh-egg-message{position:absolute;left:50%;bottom:57%;translate:-50% 0;width:max-content;max-width:95%;padding:8px 12px;border:1px solid var(--rf-accent);border-radius:16px;background:#0d2449e8;color:#fff;text-align:center;box-shadow:0 7px 20px #0b173366;animation:rf-mascot .55s ease-out both}
   @keyframes rf-spark{0%{opacity:0;transform:translate(0,0) scale(.3)}12%{opacity:1}55%{opacity:1}100%{opacity:0;transform:translate(var(--rf-x),var(--rf-y)) scale(.2)}}
   @keyframes rf-ring{0%{opacity:0;transform:scale(.1)}18%{opacity:.9}65%{opacity:.5}100%{opacity:0;transform:scale(1.6)}}
@@ -346,8 +347,8 @@ window.__ModuleLoader__.load({
     const noop = () => {}
     const empty = { revision: -1, change: { kind: 'replace', entries: [] } }
     const labels = {
-      zh: { name: '彩虹屁', points: '积分', combo: '连击', rules: '计分与评价规则', ruleTool: '成功工具调用：基础 +10 分', ruleTurn: '完成轮次：基础 +20 分；本轮有失败则不加这项', ruleMultiplier: '按本次计分后的连击数乘倍率：1–2 连击 ×1，3–4 ×2，5–7 ×3，8+ ×4', ruleReset: '90 秒内连续成功才延续连击；失败清空连击，不扣已得积分', ruleOther: '摘要、开始事件和预览不计分。积分按会话保存在此浏览器，刷新后保留。', ruleRating: '每轮结束都会评价本轮积分：0 蓄势待发，1–29 小试牛刀，30–79 渐入佳境，80–159 鬼斧神工，160–279 巅峰之作，280+ 惊世骇俗。失败则显示重整旗鼓。', ruleJev: '开启 Jev 后：none 最高小试牛刀，steady 最高渐入佳境，breakthrough 且概率 ≥0.6 升一档。评价是趣味反馈，不代表代码质量。', latestReview: '最近评价', turnReview: '本轮评价', ready: '蓄势待发', firstStep: '小试牛刀', warming: '渐入佳境', craft: '鬼斧神工', masterpiece: '巅峰之作', astonishing: '惊世骇俗', recover: '重整旗鼓', sound: '音效', jev: 'Jev 判断', jevMissing: '设置 TypeSafe 凭据后可开启 Jev', soundOff: '开启音效', soundOn: '关闭音效', preview: '预览连击', previewMessage: '预览效果：节奏起来了！', previewReview: '预览评价' },
-      en: { name: 'Rainbow Fart', points: 'Points', combo: 'Combo', rules: 'Scoring and rating rules', ruleTool: 'Successful tool call: 10 base points', ruleTurn: 'Completed turn: 20 base points, unless the turn had a failure', ruleMultiplier: 'Multiplier uses the new streak: 1–2 ×1, 3–4 ×2, 5–7 ×3, 8+ ×4', ruleReset: 'Successes within 90 seconds keep the streak. Failure resets it without deducting points.', ruleOther: 'Summaries, starts and previews score zero. Points are saved per session in this browser and survive refresh.', ruleRating: 'Each turn gets a rating from its points: 0 Ready, 1–29 First step, 30–79 Finding your stride, 80–159 Masterful, 160–279 Peak form, 280+ Astonishing. Failed turns say Regroup.', ruleJev: 'With Jev on: none caps at First step; steady caps at Finding your stride; breakthrough with probability ≥0.6 raises one tier. Ratings are playful feedback, not a code quality verdict.', latestReview: 'Latest rating', turnReview: 'Turn rating', ready: 'Ready to go', firstStep: 'First step', warming: 'Finding your stride', craft: 'Masterful', masterpiece: 'Peak form', astonishing: 'Astonishing', recover: 'Regroup', sound: 'Sound', jev: 'Jev judgment', jevMissing: 'Set TypeSafe credentials to enable Jev', soundOff: 'Turn sound on', soundOn: 'Turn sound off', preview: 'Preview combo', previewMessage: 'Preview: feel the rhythm!', previewReview: 'Preview rating' },
+      zh: { name: '彩虹屁', points: '积分', combo: '连击', rules: '计分与评价规则', ruleTool: '成功工具调用：基础 +10 分', ruleTurn: '完成轮次：基础 +20 分；本轮有失败则不加这项', ruleMultiplier: '按本次计分后的连击数乘倍率：1–2 连击 ×1，3–4 ×2，5–7 ×3，8+ ×4', ruleReset: '90 秒内连续成功才延续连击；失败清空连击，不扣已得积分', ruleOther: '摘要、开始事件和预览不计分。积分按会话保存在此浏览器，刷新后保留。', ruleRating: '每轮结束都会评价本轮积分：0 蓄势待发，1–29 小试牛刀，30–79 渐入佳境，80–159 鬼斧神工，160–279 巅峰之作，280+ 惊世骇俗。失败则显示重整旗鼓。', ruleJev: '开启 Jev 后：none 最高小试牛刀，steady 最高渐入佳境，breakthrough 且概率 ≥0.6 升一档。评价是趣味反馈，不代表代码质量。', latestReview: '最近评价', turnReview: '本轮评价', ready: '蓄势待发', firstStep: '小试牛刀', warming: '渐入佳境', craft: '鬼斧神工', masterpiece: '巅峰之作', astonishing: '惊世骇俗', recover: '重整旗鼓', sound: '音效', jev: 'Jev 判断', jevMissing: '配置 Jev API 密钥', soundOff: '开启音效', soundOn: '关闭音效', preview: '预览连击', previewMessage: '预览效果：节奏起来了！', previewReview: '预览评价' },
+      en: { name: 'Rainbow Fart', points: 'Points', combo: 'Combo', rules: 'Scoring and rating rules', ruleTool: 'Successful tool call: 10 base points', ruleTurn: 'Completed turn: 20 base points, unless the turn had a failure', ruleMultiplier: 'Multiplier uses the new streak: 1–2 ×1, 3–4 ×2, 5–7 ×3, 8+ ×4', ruleReset: 'Successes within 90 seconds keep the streak. Failure resets it without deducting points.', ruleOther: 'Summaries, starts and previews score zero. Points are saved per session in this browser and survive refresh.', ruleRating: 'Each turn gets a rating from its points: 0 Ready, 1–29 First step, 30–79 Finding your stride, 80–159 Masterful, 160–279 Peak form, 280+ Astonishing. Failed turns say Regroup.', ruleJev: 'With Jev on: none caps at First step; steady caps at Finding your stride; breakthrough with probability ≥0.6 raises one tier. Ratings are playful feedback, not a code quality verdict.', latestReview: 'Latest rating', turnReview: 'Turn rating', ready: 'Ready to go', firstStep: 'First step', warming: 'Finding your stride', craft: 'Masterful', masterpiece: 'Peak form', astonishing: 'Astonishing', recover: 'Regroup', sound: 'Sound', jev: 'Jev judgment', jevMissing: 'Configure Jev API key', soundOff: 'Turn sound on', soundOn: 'Turn sound off', preview: 'Preview combo', previewMessage: 'Preview: feel the rhythm!', previewReview: 'Preview rating' },
     }
     const scoreText = {
       zh: { total: '当前总分', previous: '此前累计（无逐项记录）', complete: '完成轮次', unknown: '未识别工具', other: '其他工具', groups: '活动分类', tools: '原始工具明细', note: '各项为实际得分，已计入连击倍率；旧积分无法准确反推工具来源。', empty: '新得分将在这里按活动与工具汇总；预览不计分。' },
@@ -366,13 +367,13 @@ window.__ModuleLoader__.load({
       zh: {
         settings: '自定义设置', close: '关闭', appearance: '外观与动效', theme: '主题', ocean: '深海', aurora: '极光', candy: '糖果', minimal: '极简', panelPlacement: '面板布局', leftDock: '左侧竖栏', bottomBar: '右下角横条', accent: '点缀色', opacity: '面板不透明度', motion: '动效强度', off: '关闭', soft: '轻柔', full: '完整', toastAnimation: '弹窗动效', pop: '弹出', slide: '滑入', fade: '淡入', toastPosition: '提示位置', top: '顶部', center: '中央', bottom: '底部',
         sound: '音效', soundEnabled: '开启音效', soundPack: '音色', chime: '清脆音阶', arcade: '街机', oceanSound: '海浪和弦', custom: '自定义音频', volume: '音量', uploadSound: '上传音效（最大 500 KB）', removeSound: '移除自定义音效',
-        judgment: '语义判断', jevEnabled: '启用 Jev 辅助判断', jevUnavailable: '当前未配置 Jev 凭据；本地计分和评价照常可用。',
+        judgment: '语义判断', jevEnabled: '启用 Jev 辅助判断', jevUnavailable: '未配置 Jev 时，本地计分和评价照常可用。', jevKey: 'TypeSafe API 密钥', jevKeyPlaceholder: '粘贴 API 密钥', jevChecking: '正在检查 Jev 配置…', jevConfigured: '检测到 API 密钥（未验证）', jevNotConfigured: '尚未配置 API 密钥', jevReadOnly: '凭据由 DSH 启动环境提供，请在启动环境中修改。', jevKeyNote: '在此保存的密钥写入本机 DSH 凭据库，不存入浏览器设置；保存后可手动开启 Jev。', jevSave: '保存密钥', jevRemove: '删除密钥', jevSaved: '密钥已保存，可开启 Jev。', jevRemoved: '密钥已删除。', jevStillConfigured: '已删除本机密钥，另有外部凭据仍在生效。', jevSaveError: '保存失败，请检查 DSH 凭据服务。', jevRemoveError: '删除失败，请检查 DSH 凭据服务。', jevStatusError: '无法读取 Jev 配置状态。',
         egg: '双侧彩蛋', eggEnabled: '启用彩蛋', eggStyle: '效果样式', fireworks: '双侧烟花', whale: '鲸鱼娘鼓励', both: '鲸鱼娘 + 烟花', eggMinCombo: '本轮最高连击门槛', eggMinTurnPoints: '本轮最低积分', eggCooldownMin: '冷却时间（分钟）', eggRequiresJev: '同时要求 Jev 突破判断（≥0.75）', eggDurationSec: '展示秒数', eggBursts: '每侧烟花数量', eggMessage: '鼓励语', mascotSize: '角色大小', uploadMascot: '替换鲸鱼娘图片（PNG / JPEG / WebP / GIF，最大 1 MB）', removeMascot: '恢复默认角色', previewEgg: '预览彩蛋', reset: '恢复默认设置', storageError: '设置已临时生效，但浏览器存储失败；刷新后可能丢失。', fileError: '文件类型或大小不符合要求。', eggNote: '默认需本轮曾达 8 连击、本轮 200 分且 10 分钟内未触发；预览不计分，也不消耗冷却。',
       },
       en: {
         settings: 'Customize', close: 'Close', appearance: 'Appearance and motion', theme: 'Theme', ocean: 'Ocean', aurora: 'Aurora', candy: 'Candy', minimal: 'Minimal', panelPlacement: 'Panel layout', leftDock: 'Left vertical dock', bottomBar: 'Bottom right bar', accent: 'Accent color', opacity: 'Panel opacity', motion: 'Motion', off: 'Off', soft: 'Soft', full: 'Full', toastAnimation: 'Toast animation', pop: 'Pop', slide: 'Slide', fade: 'Fade', toastPosition: 'Toast position', top: 'Top', center: 'Center', bottom: 'Bottom',
         sound: 'Sound', soundEnabled: 'Enable sound', soundPack: 'Sound pack', chime: 'Chime', arcade: 'Arcade', oceanSound: 'Ocean chords', custom: 'Custom audio', volume: 'Volume', uploadSound: 'Upload sound (max 500 KB)', removeSound: 'Remove custom sound',
-        judgment: 'Judgment', jevEnabled: 'Use Jev judgment', jevUnavailable: 'Jev credentials are not configured. Local scoring and ratings still work.',
+        judgment: 'Judgment', jevEnabled: 'Use Jev judgment', jevUnavailable: 'Local scoring and ratings work without Jev.', jevKey: 'TypeSafe API key', jevKeyPlaceholder: 'Paste API key', jevChecking: 'Checking Jev configuration…', jevConfigured: 'API key present (not verified)', jevNotConfigured: 'No API key configured', jevReadOnly: 'This credential comes from the DSH launch environment; change it there.', jevKeyNote: 'Keys saved here go to the local DSH credential store, not browser settings. Enable Jev separately after saving.', jevSave: 'Save key', jevRemove: 'Remove key', jevSaved: 'Key saved. You can enable Jev now.', jevRemoved: 'Key removed.', jevStillConfigured: 'Local key removed; another external credential is still active.', jevSaveError: 'Could not save the key. Check the DSH credential service.', jevRemoveError: 'Could not remove the key. Check the DSH credential service.', jevStatusError: 'Could not read Jev configuration status.',
         egg: 'Side surprise', eggEnabled: 'Enable surprise', eggStyle: 'Effect style', fireworks: 'Side fireworks', whale: 'Whale girl encouragement', both: 'Whale girl + fireworks', eggMinCombo: 'Peak combo threshold', eggMinTurnPoints: 'Minimum turn points', eggCooldownMin: 'Cooldown (minutes)', eggRequiresJev: 'Also require Jev breakthrough (≥0.75)', eggDurationSec: 'Duration (seconds)', eggBursts: 'Fireworks per side', eggMessage: 'Encouragement text', mascotSize: 'Mascot size', uploadMascot: 'Replace mascot image (PNG / JPEG / WebP / GIF, max 1 MB)', removeMascot: 'Restore default mascot', previewEgg: 'Preview surprise', reset: 'Restore defaults', storageError: 'Settings work for now, but browser storage failed; refresh may lose them.', fileError: 'Unsupported file type or size.', eggNote: 'Default: peak combo of 8 this turn, 200 turn points, and a 10-minute cooldown. Preview does not score or use cooldown.',
       },
     }
@@ -481,6 +482,11 @@ window.__ModuleLoader__.load({
       const [rulesOpen, setRulesOpen] = useState(false)
       const [settingsError, setSettingsError] = useState('')
       const [available, setAvailable] = useState(false)
+      const [credentialLoaded, setCredentialLoaded] = useState(false)
+      const [credentialWritable, setCredentialWritable] = useState(false)
+      const [credentialValue, setCredentialValue] = useState('')
+      const [credentialBusy, setCredentialBusy] = useState(false)
+      const [credentialFeedback, setCredentialFeedback] = useState(null)
       const [toast, setToast] = useState(null)
       const [egg, setEgg] = useState(null)
       const [zones, setZones] = useState({ left: null, right: null, dock: null, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight })
@@ -505,6 +511,7 @@ window.__ModuleLoader__.load({
       const summary = useRef('')
       const reviewRequest = useRef(0)
       const audio = useRef(null)
+      const credentialInput = useRef(null)
       const timer = useRef(null)
       const eggTimer = useRef(null)
       const eggShownSeq = useRef(-1)
@@ -521,6 +528,13 @@ window.__ModuleLoader__.load({
       const A = key => activityText[language()][key]
       const sound = settings.soundEnabled
       const jev = settings.jevEnabled
+      const validCredential = credentialValue.trim().length > 0 && credentialValue.trim().length <= 2048 && !/\s/u.test(credentialValue.trim())
+
+      const applyCredentialStatus = data => {
+        setAvailable(data.jevAvailable === true)
+        setCredentialWritable(data.writable === true)
+        setCredentialLoaded(true)
+      }
 
       const updateSettings = patch => {
         const next = normalizeSettings({ ...settings, ...patch })
@@ -529,6 +543,31 @@ window.__ModuleLoader__.load({
           localStorage.setItem('rainbow-fart-dsh.settings.v1', JSON.stringify(next))
           setSettingsError('')
         } catch { setSettingsError(S('storageError')) }
+      }
+
+      const closeSettings = () => {
+        setCredentialValue('')
+        setCredentialFeedback(null)
+        setSettingsOpen(false)
+      }
+
+      const changeCredential = async method => {
+        if (credentialBusy) return
+        setCredentialBusy(true)
+        setCredentialFeedback(null)
+        try {
+          const response = await fetch(path, { method,
+            ...(method === 'PUT' ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ apiKey: credentialValue.trim() }) } : {}) })
+          if (!response.ok) throw new Error('credential operation failed')
+          const data = await response.json()
+          applyCredentialStatus(data)
+          setCredentialValue('')
+          if (!data.jevAvailable && jev) updateSettings({ jevEnabled: false, eggRequiresJev: false })
+          setCredentialFeedback({ error: false, message: S(method === 'PUT' ? 'jevSaved'
+            : data.jevAvailable ? 'jevStillConfigured' : 'jevRemoved') })
+        } catch {
+          setCredentialFeedback({ error: true, message: S(method === 'PUT' ? 'jevSaveError' : 'jevRemoveError') })
+        } finally { setCredentialBusy(false) }
       }
 
       const upload = (event, key, types, maxBytes) => {
@@ -551,8 +590,13 @@ window.__ModuleLoader__.load({
         live.current = true
         const controller = new AbortController()
         fetch(path, { signal: controller.signal }).then(response => response.json()).then(data => {
-          if (live.current) setAvailable(data.jevAvailable === true)
-        }).catch(noop)
+          if (live.current) applyCredentialStatus(data)
+        }).catch(() => {
+          if (live.current && !controller.signal.aborted) {
+            setCredentialLoaded(true)
+            setCredentialFeedback({ error: true, message: S('jevStatusError') })
+          }
+        })
         return () => {
           live.current = false
           controller.abort()
@@ -750,7 +794,7 @@ window.__ModuleLoader__.load({
       const dockLeft = dockZone?.left || 0
       const settingsPanel = settingsOpen && h('div', { className: 'rf-dsh-settings', role: 'dialog', 'aria-label': S('settings') },
         h('div', { className: 'rf-dsh-settings-head' }, h('strong', null, `🌈 ${S('settings')}`),
-          h('button', { type: 'button', 'aria-label': S('close'), onClick: () => setSettingsOpen(false) }, '×')),
+          h('button', { type: 'button', 'aria-label': S('close'), onClick: closeSettings }, '×')),
         h('h3', null, S('appearance')),
         h('div', { className: 'rf-dsh-settings-grid' },
           select('theme', 'theme', [['ocean', 'ocean'], ['aurora', 'aurora'], ['candy', 'candy'], ['minimal', 'minimal']]),
@@ -773,6 +817,28 @@ window.__ModuleLoader__.load({
             onChange: event => upload(event, 'customSound', ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/webm'], 500_000) })),
         settings.customSound && h('button', { type: 'button', onClick: () => updateSettings({ customSound: '', soundPack: 'chime' }) }, S('removeSound')),
         h('h3', null, S('judgment')),
+        h('div', { className: 'rf-dsh-credential' },
+          h('p', { className: 'rf-dsh-credential-state', 'data-ready': available, 'aria-live': 'polite' },
+            S(!credentialLoaded ? 'jevChecking' : available ? 'jevConfigured' : 'jevNotConfigured')),
+          credentialWritable && h('label', { className: 'rf-dsh-field' }, h('span', null, S('jevKey')),
+            h('input', { ref: credentialInput, type: 'password', autoComplete: 'new-password',
+              placeholder: S('jevKeyPlaceholder'), maxLength: 2048, value: credentialValue,
+              disabled: credentialBusy, onChange: event => setCredentialValue(event.target.value),
+              onKeyDown: event => {
+                if (event.key === 'Enter' && validCredential && !credentialBusy) {
+                  event.preventDefault()
+                  void changeCredential('PUT')
+                }
+              } })),
+          credentialWritable && h('div', { className: 'rf-dsh-settings-actions' },
+            h('button', { type: 'button', disabled: !validCredential || credentialBusy,
+              onClick: () => void changeCredential('PUT') }, S('jevSave')),
+            available && h('button', { type: 'button', disabled: credentialBusy,
+              onClick: () => void changeCredential('DELETE') }, S('jevRemove'))),
+          credentialLoaded && !credentialWritable && h('p', { className: 'rf-dsh-settings-note' }, S('jevReadOnly')),
+          h('p', { className: 'rf-dsh-settings-note' }, S('jevKeyNote')),
+          credentialFeedback && h('p', { className: credentialFeedback.error ? 'rf-dsh-settings-error' : 'rf-dsh-settings-note',
+            role: credentialFeedback.error ? 'alert' : 'status' }, credentialFeedback.message)),
         check('jevEnabled', 'jevEnabled', !available),
         !available && h('p', { className: 'rf-dsh-settings-note' }, S('jevUnavailable')),
         h('h3', null, S('egg')),
@@ -870,11 +936,17 @@ window.__ModuleLoader__.load({
           h('button', {
             type: 'button', 'aria-label': available ? t('jev') : t('jevMissing'),
             title: available ? t('jev') : t('jevMissing'), 'aria-pressed': jev && available,
-            disabled: !available,
-            onClick: () => updateSettings({ jevEnabled: !jev, eggRequiresJev: !jev && settings.eggRequiresJev }),
+            onClick: () => {
+              if (!available) {
+                setSettingsOpen(true)
+                requestAnimationFrame(() => credentialInput.current?.focus())
+                return
+              }
+              updateSettings({ jevEnabled: !jev, eggRequiresJev: !jev && settings.eggRequiresJev })
+            },
           }, 'J'),
           h('button', { type: 'button', 'aria-label': S('settings'), title: S('settings'),
-            'aria-expanded': settingsOpen, onClick: () => setSettingsOpen(!settingsOpen) }, '⚙'))))
+            'aria-expanded': settingsOpen, onClick: () => settingsOpen ? closeSettings() : setSettingsOpen(true) }, '⚙'))))
     }
 
     function Rainbow(props) {
