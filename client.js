@@ -283,12 +283,13 @@ function shouldTriggerEgg({ completed, failed, combo, turnPoints, now, lastEggAt
 const STYLE = `
   .rf-dsh{position:fixed;inset:0;z-index:70;pointer-events:none;font:600 13px/1.35 system-ui,-apple-system,sans-serif;color:#fff}
   .rf-dsh *{box-sizing:border-box}
-  .rf-dsh-toast{position:absolute;z-index:2;top:72px;left:50%;transform:translate(-50%,-12px) scale(.82);opacity:0;min-width:250px;width:min(400px,90vw);padding:15px 18px;border-radius:20px;text-align:center;background:linear-gradient(120deg,#7c3aed,#ec4899 48%,#f59e0b);box-shadow:0 14px 45px #7c3aed55,0 0 0 1px #ffffff77 inset;animation:rf-pop .28s cubic-bezier(.17,.89,.32,1.4) forwards;overflow:hidden}
-  .rf-dsh-toast:after{content:'';position:absolute;inset:-50%;background:linear-gradient(110deg,transparent 35%,#ffffff55 48%,transparent 61%);transform:translateX(-80%);animation:rf-shine .65s ease-out .12s both}
+  .rf-dsh-toast{position:absolute;z-index:2;top:72px;left:50%;transform:translate(-50%,-12px) scale(.82);opacity:0;min-width:250px;width:min(400px,90vw);padding:15px 18px;border-radius:20px;text-align:center;background:linear-gradient(120deg,#7c3aed,#ec4899 48%,#f59e0b);box-shadow:0 14px 45px #7c3aed55,0 0 0 1px #ffffff77 inset;animation:rf-pop .28s cubic-bezier(.17,.89,.32,1.4) forwards;overflow:hidden;pointer-events:auto}
+  .rf-dsh-toast:after{content:'';position:absolute;inset:-50%;background:linear-gradient(110deg,transparent 35%,#ffffff55 48%,transparent 61%);transform:translateX(-80%);animation:rf-shine .65s ease-out .12s both;pointer-events:none}
   .rf-dsh-toast strong{display:block;font-size:23px;letter-spacing:.05em;text-shadow:0 2px 8px #4c1d9580}
   .rf-dsh-toast>span{display:block;margin-top:3px;font-weight:550}
   .rf-dsh-toast-gain{display:flex;justify-content:center;align-items:baseline;flex-wrap:wrap;gap:5px;margin-top:8px;font-size:12px}.rf-dsh-toast-gain b{color:#fff4a3;font-size:16px}.rf-dsh-toast-gain small{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;opacity:.9}
   .rf-dsh-toast-summary{display:grid;gap:4px;margin-top:9px;padding:7px 10px;border:1px solid #ffffff55;border-radius:11px;background:#14213b70;text-align:left}.rf-dsh-toast-row{display:flex;justify-content:space-between;gap:12px;font-size:12px}.rf-dsh-toast-row span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rf-dsh-toast-row b{flex:none;color:#fff4a3;font-variant-numeric:tabular-nums}
+  .rf-dsh-toast-actions{display:flex;justify-content:center;gap:8px;margin-top:10px}.rf-dsh-toast-actions button{position:relative;z-index:1;border:1px solid #ffffff88;border-radius:999px;padding:4px 11px;background:#14213b88;color:#fff;font:inherit;cursor:pointer}.rf-dsh-toast-actions button:hover{background:#14213bcc}.rf-dsh-toast-actions button:focus-visible,.rf-dsh-settings button:focus-visible{outline:2px solid #facc15;outline-offset:2px}
   .rf-dsh-toast[data-tier="super"],.rf-dsh-toast[data-tier="legendary"]{box-shadow:0 18px 60px #f59e0b77,0 0 0 2px #fff8 inset}
   .rf-dsh-confetti{position:absolute;top:90px;left:50%;font-size:20px;animation:rf-burst .8s ease-out forwards;transform-origin:center}
   .rf-dsh-panel{position:absolute;right:18px;bottom:18px;display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;max-width:calc(100vw - 36px);gap:7px;padding:7px 9px 7px 12px;border-radius:18px;background:#241743ed;border:1px solid #b493ff66;box-shadow:0 8px 24px #10062b66;pointer-events:auto;backdrop-filter:blur(14px)}
@@ -351,8 +352,8 @@ window.__ModuleLoader__.load({
       en: { name: 'Rainbow Fart', points: 'Points', combo: 'Combo', rules: 'Scoring and rating rules', ruleTool: 'Successful tool call: 10 base points', ruleTurn: 'Completed turn: 20 base points, unless the turn had a failure', ruleMultiplier: 'Multiplier uses the new streak: 1–2 ×1, 3–4 ×2, 5–7 ×3, 8+ ×4', ruleReset: 'Successes within 90 seconds keep the streak. Failure resets it without deducting points.', ruleOther: 'Summaries, starts and previews score zero. Points are saved per session in this browser and survive refresh.', ruleRating: 'Each turn gets a rating from its points: 0 Ready, 1–29 First step, 30–79 Finding your stride, 80–159 Masterful, 160–279 Peak form, 280+ Astonishing. Failed turns say Regroup.', ruleJev: 'With Jev on: none caps at First step; steady caps at Finding your stride; breakthrough with probability ≥0.6 raises one tier. Ratings are playful feedback, not a code quality verdict.', latestReview: 'Latest rating', turnReview: 'Turn rating', ready: 'Ready to go', firstStep: 'First step', warming: 'Finding your stride', craft: 'Masterful', masterpiece: 'Peak form', astonishing: 'Astonishing', recover: 'Regroup', sound: 'Sound', jev: 'Jev judgment', jevMissing: 'Configure Jev API key', soundOff: 'Turn sound on', soundOn: 'Turn sound off', preview: 'Preview combo', previewMessage: 'Preview: feel the rhythm!', previewReview: 'Preview rating' },
     }
     const scoreText = {
-      zh: { total: '当前总分', previous: '此前累计（无逐项记录）', complete: '完成轮次', unknown: '未识别工具', other: '其他工具', groups: '活动分类', tools: '原始工具明细', note: '各项为实际得分，已计入连击倍率；旧积分无法准确反推工具来源。', empty: '新得分将在这里按活动与工具汇总；预览不计分。' },
-      en: { total: 'Current total', previous: 'Earlier points (no itemized history)', complete: 'Completed turns', unknown: 'Unknown tool', other: 'Other tools', groups: 'Activity categories', tools: 'Exact tool names', note: 'Amounts include combo multipliers. Earlier points cannot be reliably attributed to tools.', empty: 'New points will be grouped by activity and tool. Previews do not score.' },
+      zh: { total: '当前总分', previous: '此前累计（无逐项记录）', complete: '完成轮次', unknown: '未识别工具', other: '其他工具', groups: '活动分类', tools: '原始工具明细', details: '查看完整明细', note: '各项为实际得分，已计入连击倍率；旧积分无法准确反推工具来源。', empty: '新得分将在这里按活动与工具汇总；预览不计分。' },
+      en: { total: 'Current total', previous: 'Earlier points (no itemized history)', complete: 'Completed turns', unknown: 'Unknown tool', other: 'Other tools', groups: 'Activity categories', tools: 'Exact tool names', details: 'View full breakdown', note: 'Amounts include combo multipliers. Earlier points cannot be reliably attributed to tools.', empty: 'New points will be grouped by activity and tool. Previews do not score.' },
     }
     const activityText = {
       zh: { web: 'Web 检索', skill: 'Skill', files: '文件操作', terminal: '终端命令', browser: '浏览器', complete: '完成轮次', other: '其他工具', unknown: '未识别工具', gain: '本次得分', turnGain: '本轮积分', preview: '示例明细 · 不计分', turnSummary: '本轮明细' },
@@ -488,6 +489,9 @@ window.__ModuleLoader__.load({
       const [credentialBusy, setCredentialBusy] = useState(false)
       const [credentialFeedback, setCredentialFeedback] = useState(null)
       const [toast, setToast] = useState(null)
+      const [toastHover, setToastHover] = useState(false)
+      const [toastFocus, setToastFocus] = useState(false)
+      const [toastInteracted, setToastInteracted] = useState(false)
       const [egg, setEgg] = useState(null)
       const [zones, setZones] = useState({ left: null, right: null, dock: null, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight })
       const [count, setCount] = useState(0)
@@ -512,7 +516,9 @@ window.__ModuleLoader__.load({
       const reviewRequest = useRef(0)
       const audio = useRef(null)
       const credentialInput = useRef(null)
-      const timer = useRef(null)
+      const settingsButton = useRef(null)
+      const settingsCloseButton = useRef(null)
+      const rulesRef = useRef(null)
       const eggTimer = useRef(null)
       const eggShownSeq = useRef(-1)
       const lastEggAt = useRef(readLastEggAt())
@@ -549,7 +555,21 @@ window.__ModuleLoader__.load({
         setCredentialValue('')
         setCredentialFeedback(null)
         setSettingsOpen(false)
+        settingsButton.current?.focus()
       }
+
+      useEffect(() => {
+        if (!settingsOpen) return
+        settingsCloseButton.current?.focus()
+        const onEscape = event => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          event.stopPropagation()
+          closeSettings()
+        }
+        window.addEventListener('keydown', onEscape, true)
+        return () => window.removeEventListener('keydown', onEscape, true)
+      }, [settingsOpen])
 
       const changeCredential = async method => {
         if (credentialBusy) return
@@ -600,7 +620,6 @@ window.__ModuleLoader__.load({
         return () => {
           live.current = false
           controller.abort()
-          clearTimeout(timer.current)
           clearTimeout(eggTimer.current)
           if (audio.current) { void audio.current.close(); audio.current = null }
         }
@@ -652,10 +671,18 @@ window.__ModuleLoader__.load({
       const show = ({ message, tier, value, earned = 0, isReview = false, reviewSeq = null,
         activity = null, name = '', summary = [], preview = false }) => {
         setToast({ id: Date.now() + Math.random(), message, tier, value, earned, isReview, reviewSeq, activity, name, summary, preview })
+        setToastHover(false)
+        setToastFocus(false)
+        setToastInteracted(false)
         play(tier, audio, settings)
-        clearTimeout(timer.current)
-        timer.current = setTimeout(() => { if (live.current) setToast(null) }, 2700)
       }
+
+      useEffect(() => {
+        if (!toast || toastHover || toastFocus) return
+        const delay = toastInteracted ? 1800 : toast.summary.length > 0 ? 6500 : 2700
+        const timeout = setTimeout(() => setToast(null), delay)
+        return () => clearTimeout(timeout)
+      }, [toast?.id, toastHover, toastFocus, toastInteracted])
 
       const showEgg = (preview = false) => {
         const now = Date.now()
@@ -794,7 +821,7 @@ window.__ModuleLoader__.load({
       const dockLeft = dockZone?.left || 0
       const settingsPanel = settingsOpen && h('div', { className: 'rf-dsh-settings', role: 'dialog', 'aria-label': S('settings') },
         h('div', { className: 'rf-dsh-settings-head' }, h('strong', null, `🌈 ${S('settings')}`),
-          h('button', { type: 'button', 'aria-label': S('close'), onClick: closeSettings }, '×')),
+          h('button', { ref: settingsCloseButton, type: 'button', 'aria-label': S('close'), onClick: closeSettings }, '×')),
         h('h3', null, S('appearance')),
         h('div', { className: 'rf-dsh-settings-grid' },
           select('theme', 'theme', [['ocean', 'ocean'], ['aurora', 'aurora'], ['candy', 'candy'], ['minimal', 'minimal']]),
@@ -862,7 +889,7 @@ window.__ModuleLoader__.load({
         settings.customMascot && h('button', { type: 'button', onClick: () => updateSettings({ customMascot: '' }) }, S('removeMascot')),
         settingsError && h('p', { className: 'rf-dsh-settings-error', role: 'alert' }, settingsError),
         h('div', { className: 'rf-dsh-settings-actions' },
-          h('button', { type: 'button', onClick: () => { setSettingsOpen(false); showEgg(true) } }, S('previewEgg')),
+          h('button', { type: 'button', onClick: () => { closeSettings(); showEgg(true) } }, S('previewEgg')),
           h('button', { type: 'button', onClick: () => updateSettings(DEFAULT_SETTINGS) }, S('reset'))))
 
       return h('div', { ref: overlay, className: 'rf-dsh', 'data-rainbow-fart-dsh': '',
@@ -873,7 +900,11 @@ window.__ModuleLoader__.load({
           '--rf-dock-left': `${dockLeft}px`, '--rf-dock-width': `${dockWidth}px` } },
         egg && h('div', { className: 'rf-dsh-egg-layer', 'data-rf-egg': egg.eggStyle, role: 'status', 'aria-live': 'polite' },
           renderZone('left', zones.left), renderZone('right', zones.right)),
-        toast && h('div', { key: toast.id, className: 'rf-dsh-toast', 'data-tier': toast.tier, role: 'status', 'aria-live': 'polite' },
+        toast && h('div', { key: toast.id, className: 'rf-dsh-toast', 'data-tier': toast.tier, role: 'status', 'aria-live': 'polite',
+          onMouseEnter: () => { setToastHover(true); setToastInteracted(true) },
+          onMouseLeave: () => setToastHover(false),
+          onFocusCapture: () => { setToastFocus(true); setToastInteracted(true) },
+          onBlurCapture: event => { if (!event.currentTarget.contains(event.relatedTarget)) setToastFocus(false) } },
           h('strong', null, toast.isReview ? toast.message : toast.value >= 3 ? `${toast.value}× COMBO` : '✨ NICE!'),
           h('span', null, toast.isReview ? t('turnReview') : toast.message),
           (toast.earned > 0 || toast.preview) && h('div', { className: 'rf-dsh-toast-gain' },
@@ -883,7 +914,15 @@ window.__ModuleLoader__.load({
               `· ${A(toast.activity)}${toast.name ? ` (${toast.name})` : ''}`)),
           toast.summary.length > 0 && h('div', { className: 'rf-dsh-toast-summary', 'aria-label': A('turnSummary') },
             toast.summary.map(row => h('div', { className: 'rf-dsh-toast-row', key: row.category },
-              h('span', null, `${A(row.category)} ×${row.count}`), h('b', null, `+${row.points}`))))),
+              h('span', null, `${A(row.category)} ×${row.count}`), h('b', null, `+${row.points}`)))),
+          h('div', { className: 'rf-dsh-toast-actions' },
+            h('button', { type: 'button', onClick: () => {
+              rulesRef.current.open = true
+              setRulesOpen(true)
+              rulesRef.current.querySelector('summary')?.focus()
+              setToast(null)
+            } }, B('details')),
+            h('button', { type: 'button', onClick: () => setToast(null) }, S('close')))),
         toast && toast.value >= 3 && Array.from({ length: 8 }, (_, i) => h('span', {
           key: `${toast.id}-${i}`, className: 'rf-dsh-confetti', 'aria-hidden': 'true',
           style: { '--rf-x': `${(i - 3.5) * 36}px`, '--rf-y': `${-25 - (i % 3) * 36}px`, '--rf-r': `${i * 57}deg`, color: ['#facc15', '#4ade80', '#38bdf8', '#fb7185'][i % 4] },
@@ -893,7 +932,7 @@ window.__ModuleLoader__.load({
           h('span', { className: 'rf-dsh-brand', title: t('name') }, h('span', { 'aria-hidden': 'true' }, '🌈'), h('span', { className: 'rf-dsh-brand-name' }, t('name'))),
           h('span', { className: 'rf-dsh-combo', 'aria-label': `${count} ${t('combo')}`, title: `${count} ${t('combo')}` }, h('b', null, `${count}×`), h('span', { className: 'rf-dsh-combo-label' }, ` ${t('combo')}`)),
           h('div', { className: 'rf-dsh-controls' },
-          h('details', { className: 'rf-dsh-rules', onToggle: event => setRulesOpen(event.currentTarget.open) },
+          h('details', { ref: rulesRef, className: 'rf-dsh-rules', onToggle: event => setRulesOpen(event.currentTarget.open) },
             h('summary', { 'aria-label': t('rules'), title: t('rules') }, '?'),
             h('div', { className: 'rf-dsh-rules-content' },
               h('strong', null, t('rules')),
@@ -945,7 +984,7 @@ window.__ModuleLoader__.load({
               updateSettings({ jevEnabled: !jev, eggRequiresJev: !jev && settings.eggRequiresJev })
             },
           }, 'J'),
-          h('button', { type: 'button', 'aria-label': S('settings'), title: S('settings'),
+          h('button', { ref: settingsButton, type: 'button', 'aria-label': S('settings'), title: S('settings'),
             'aria-expanded': settingsOpen, onClick: () => settingsOpen ? closeSettings() : setSettingsOpen(true) }, '⚙'))))
     }
 
