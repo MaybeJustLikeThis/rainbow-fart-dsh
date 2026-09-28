@@ -1,5 +1,7 @@
 # Rainbow Fart-DSH 🌈
 
+**理念：快乐 Coding，让 AI 为人类提供情绪价值。** 把编程过程中的每一步进展变成可选择的、轻松的鼓励。
+
 给 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) Web 会话添加轻量的连击、积分、轮次评价和可选彩蛋。插件只呈现趣味反馈，不改变 Agent 的工具执行或会话日志；积分和评价不代表代码质量、测试或部署结果。
 
 > 当前版本：0.5.6。针对 DSH 0.1.7-rc.1 验证。DSH 仍处于开发预览，后续版本可能调整插件接口。
