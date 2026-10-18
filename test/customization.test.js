@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { advanceCombo, initialCombo } from '../core.js'
-import { DEFAULT_SETTINGS, normalizeSettings, shouldTriggerEgg } from '../customization.js'
+import { assetDataUrl, DEFAULT_SETTINGS, normalizeSettings, resolveAssetMime, shouldTriggerEgg } from '../customization.js'
 
 test('settings reject unsafe values and bound user-controlled thresholds', () => {
   const settings = normalizeSettings({
@@ -19,6 +19,21 @@ test('settings reject unsafe values and bound user-controlled thresholds', () =>
   assert.equal(settings.eggCooldownMin, 1)
   assert.equal(settings.customMascot, '')
   assert.equal(settings.eggMessage, '<img onerror=alert(1)>') // React renders this as text.
+})
+
+test('uploads with an empty or nonstandard MIME still become a canonical data URL', () => {
+  assert.equal(resolveAssetMime('mascot', { name: 'whale.jpg', type: '' }), 'image/jpeg')
+  assert.equal(resolveAssetMime('mascot', { name: 'whale.png', type: 'image/jpg' }), 'image/jpeg')
+  assert.equal(resolveAssetMime('sound', { name: 'cheer.wav', type: 'audio/wave' }), 'audio/wav')
+  assert.equal(resolveAssetMime('sound', { name: 'cheer.txt', type: 'text/plain' }), '')
+  const jpeg = assetDataUrl('mascot', { name: 'whale.jpg', type: 'image/jpg' }, 'data:image/jpg;base64,aaaa')
+  assert.equal(jpeg, 'data:image/jpeg;base64,aaaa')
+  assert.equal(normalizeSettings({ customMascot: jpeg }).customMascot, jpeg)
+  const wav = assetDataUrl('sound', { name: 'cheer.WAV', type: '' }, 'data:;base64,qqqq')
+  assert.equal(wav, 'data:audio/wav;base64,qqqq')
+  assert.equal(normalizeSettings({ customSound: wav }).customSound, wav)
+  assert.equal(assetDataUrl('mascot', { name: 'whale.png', type: 'image/png' }, `data:image/png;base64,${'a'.repeat(1_500_000)}`), '')
+  assert.equal(assetDataUrl('sound', { name: 'x.mp3', type: 'audio/mpeg' }, 'data:audio/mpeg;base64,not valid'), '')
 })
 
 test('Easter egg requires a rare clean turn and respects cooldown', () => {

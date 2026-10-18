@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { addBreakdown, advanceCombo, candidateFromEvent, classifyActivity, createActivityTracker, initialBreakdown, initialCombo, latestDurableSeq, newDurableEntries, observeActivity, ratingForTurn, reconcileBreakdown, scoreFor, summarizeBreakdown } from '../core.js'
+import { addBreakdown, advanceCombo, candidateFromEvent, classifyActivity, createActivityTracker, initialBreakdown, initialCombo, latestDurableSeq, newDurableEntries, normalizeJevAnswer, observeActivity, ratingForTurn, reconcileBreakdown, scoreFor, summarizeBreakdown } from '../core.js'
 
 test('successes build a combo, failures break it, and repeated events do not score twice', () => {
   let state = initialCombo()
@@ -163,4 +163,16 @@ test('assistant settlement is observed once and a revision gap recovers unseen e
   assert.equal(latestDurableSeq([old]), 1)
   assert.deepEqual(newDurableEntries({ revision: 2, change: { kind: 'settle-assistant', entry: settled }, entries: [old, settled] }, 1, 1), [settled])
   assert.deepEqual(newDurableEntries({ revision: 4, change: { kind: 'append', entries: [end] }, entries: [old, settled, end] }, 1, 1), [settled, end])
+  assert.deepEqual(newDurableEntries({ revision: 2, change: { kind: 'prepend' }, entries: [old, settled] }, 1, 1), [])
+  assert.deepEqual(newDurableEntries({ revision: 2, change: { kind: 'tool-update' }, entries: [old, settled] }, 1, 1), [settled])
+  assert.deepEqual(newDurableEntries({ revision: 2, change: { kind: 'tool-update' } }, 1, 1), [])
+})
+
+test('Jev answers with a non-finite or out-of-range probability are ignored', () => {
+  assert.deepEqual(normalizeJevAnswer({ choice: 'breakthrough', probability: 0.91 }), { choice: 'breakthrough', probability: 0.91 })
+  for (const probability of [Number.NaN, Number.POSITIVE_INFINITY, -0.01, 1.01, '0.9']) {
+    assert.equal(normalizeJevAnswer({ choice: 'steady', probability }), null)
+  }
+  assert.equal(normalizeJevAnswer({ choice: 'amazing', probability: 1 }), null)
+  assert.equal(normalizeJevAnswer(null), null)
 })

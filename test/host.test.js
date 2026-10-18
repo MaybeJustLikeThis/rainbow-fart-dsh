@@ -82,9 +82,31 @@ test('the bundled whale-girl image is served as PNG by the Host route', async ()
   const mascot = routes.find(route => route.path === '/api/rainbow-fart.mascot')
   assert.ok(mascot)
   assert.equal(mascot.requestBody, 'buffered')
-  const response = await mascot.fetch(new Request('http://localhost/api/rainbow-fart.mascot'))
-  assert.equal(response.headers.get('content-type'), 'image/png')
-  assert.equal(response.headers.get('cache-control'), 'no-store')
-  const bytes = new Uint8Array(await response.arrayBuffer())
-  assert.deepEqual([...bytes.slice(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
+  const first = await mascot.fetch(new Request('http://localhost/api/rainbow-fart.mascot'))
+  const second = await mascot.fetch(new Request('http://localhost/api/rainbow-fart.mascot?asset=sailor-20260924'))
+  for (const response of [first, second]) {
+    assert.equal(response.headers.get('content-type'), 'image/png')
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=86400')
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    assert.deepEqual([...bytes.slice(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10])
+    assert.ok(bytes.length > 1000)
+  }
+})
+
+test('a non-finite Jev probability or a failed upstream call does not return a choice', async () => {
+  const config = { model: 'jev-1.13.0', timeoutMs: 1000 }
+  const post = upstream => handle(new Request('http://localhost/api/rainbow-fart.judge', {
+    method: 'POST', body: JSON.stringify({ kind: 'complete', text: 'Shipped the fix.' }),
+  }), config, { env: { TYPESAFE_API_KEY: 'k' }, fetch: async () => upstream })
+  const invalid = await post(Response.json({ answers: { praise: { type: 'choice', choice: 'steady', probabilities: { steady: Number.NaN } } } }))
+  assert.equal(invalid.status, 502)
+  let cancelled = false
+  const failed = await post({
+    ok: false,
+    body: { cancel: async () => { cancelled = true } },
+    json: async () => { throw new Error('error body should not be parsed') },
+  })
+  assert.equal(failed.status, 502)
+  assert.equal(cancelled, true)
+  assert.equal(await failed.json().then(body => body.error), 'Jev request failed')
 })

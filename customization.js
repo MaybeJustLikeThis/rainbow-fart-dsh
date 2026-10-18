@@ -59,6 +59,47 @@ export function normalizeSettings(raw = {}) {
   return next
 }
 
+const ASSET_MIME = {
+  sound: {
+    maxLength: 800_000,
+    extensions: { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm' },
+    aliases: {
+      'audio/mpeg': 'audio/mpeg', 'audio/mp3': 'audio/mpeg', 'audio/wav': 'audio/wav',
+      'audio/x-wav': 'audio/wav', 'audio/wave': 'audio/wav', 'audio/vnd.wave': 'audio/wav',
+      'audio/ogg': 'audio/ogg', 'audio/webm': 'audio/webm',
+    },
+  },
+  mascot: {
+    maxLength: 1_500_000,
+    extensions: { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' },
+    aliases: { 'image/png': 'image/png', 'image/jpeg': 'image/jpeg', 'image/jpg': 'image/jpeg', 'image/webp': 'image/webp', 'image/gif': 'image/gif' },
+  },
+}
+
+/** Accept a known MIME, or an empty / octet-stream type when the extension is one we already allow. */
+export function resolveAssetMime(kind, { name = '', type = '' } = {}) {
+  const spec = ASSET_MIME[kind]
+  if (!spec) return ''
+  const reported = String(type).toLowerCase()
+  if (spec.aliases[reported]) return spec.aliases[reported]
+  if (reported && reported !== 'application/octet-stream') return ''
+  const extension = String(name).toLowerCase().match(/\.([a-z0-9]+)$/u)?.[1]
+  return spec.extensions[extension] || ''
+}
+
+/** Rewrite a FileReader data URL onto a canonical MIME so stored audio and images survive normalizeSettings. */
+export function assetDataUrl(kind, fileMeta, dataUrl) {
+  const mime = resolveAssetMime(kind, fileMeta)
+  const spec = ASSET_MIME[kind]
+  if (!mime || !spec || typeof dataUrl !== 'string') return ''
+  const comma = dataUrl.indexOf(',')
+  if (comma < 0) return ''
+  const payload = dataUrl.slice(comma + 1)
+  if (!/^[A-Za-z0-9+/=]+$/u.test(payload)) return ''
+  const next = `data:${mime};base64,${payload}`
+  return next.length <= spec.maxLength ? next : ''
+}
+
 export function shouldTriggerEgg({ completed, failed, combo, turnPoints, now, lastEggAt, jevChoice, probability }, settings) {
   if (!settings.eggEnabled || !completed || failed) return false
   if (combo < settings.eggMinCombo || turnPoints < settings.eggMinTurnPoints) return false

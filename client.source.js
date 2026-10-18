@@ -1,5 +1,5 @@
-import { addBreakdown, advanceCombo, classifyActivity, createActivityTracker, initialBreakdown, initialCombo, latestDurableSeq, newDurableEntries, observeActivity, phraseFor, ratingForTurn, reconcileBreakdown, summarizeBreakdown } from './core.js'
-import { DEFAULT_SETTINGS, normalizeSettings, shouldTriggerEgg } from './customization.js'
+import { addBreakdown, advanceCombo, classifyActivity, createActivityTracker, initialBreakdown, initialCombo, latestDurableSeq, newDurableEntries, normalizeJevAnswer, observeActivity, phraseFor, ratingForTurn, reconcileBreakdown, summarizeBreakdown } from './core.js'
+import { assetDataUrl, DEFAULT_SETTINGS, normalizeSettings, resolveAssetMime, shouldTriggerEgg } from './customization.js'
 
 const STYLE = `
   .rf-dsh{position:fixed;inset:0;z-index:70;pointer-events:none;font:600 13px/1.35 system-ui,-apple-system,sans-serif;color:#fff}
@@ -141,13 +141,20 @@ window.__ModuleLoader__.load({
         return Number.isSafeInteger(value) && value >= 0 ? value : 0
       } catch { return 0 }
     }
-    function play(tier, audioRef, settings) {
+    function play(tier, audioRef, settings, clips = []) {
       if (!settings.soundEnabled || settings.volume <= 0) return
       if (settings.soundPack === 'custom' && settings.customSound) {
         try {
           const sound = new Audio(settings.customSound)
           sound.volume = settings.volume
-          void sound.play().catch(noop)
+          const forget = () => {
+            const index = clips.indexOf(sound)
+            if (index >= 0) clips.splice(index, 1)
+          }
+          clips.push(sound)
+          sound.onended = forget
+          sound.onerror = forget
+          void sound.play().catch(() => forget())
         } catch { /* optional sound */ }
         return
       }
@@ -169,6 +176,9 @@ window.__ModuleLoader__.load({
           gain.gain.exponentialRampToValueAtTime(Math.max(.001, .12 * settings.volume), audio.currentTime + index * .08 + .015)
           gain.gain.exponentialRampToValueAtTime(.001, audio.currentTime + index * .08 + .16)
           oscillator.connect(gain).connect(audio.destination)
+          oscillator.onended = () => {
+            try { oscillator.disconnect(); gain.disconnect() } catch { /* context already closed */ }
+          }
           oscillator.start(audio.currentTime + index * .08)
           oscillator.stop(audio.currentTime + index * .08 + .17)
         })
@@ -244,8 +254,15 @@ window.__ModuleLoader__.load({
       const eggShownSeq = useRef(-1)
       const lastEggAt = useRef(readLastEggAt())
       const overlay = useRef(null)
+      const settingsDialog = useRef(null)
       const live = useRef(true)
+      const customClips = useRef([])
+      const judgeAbort = useRef(null)
+      const credentialRequest = useRef(0)
+      const credentialOk = useRef(false)
       const lastRevision = useRef(source?.getSnapshot().revision ?? -1)
+      const runtime = useRef({})
+      runtime.current = { settings, t, available }
       const subscribe = useMemo(() => source ? callback => source.subscribe(callback) : noop, [source])
       const getSnapshot = useMemo(() => source ? () => source.getSnapshot() : () => empty, [source])
       const snapshot = useSyncExternalStore(subscribe, getSnapshot)
@@ -281,16 +298,51 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         if (!settingsOpen) return
+        const dialog = settingsDialog.current
         settingsCloseButton.current?.focus()
-        const onEscape = event => {
-          if (event.key !== 'Escape') return
-          event.preventDefault()
-          event.stopPropagation()
-          closeSettings()
+        const onKeyDown = event => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            event.stopPropagation()
+            closeSettings()
+            return
+          }
+          if (event.key !== 'Tab' || !dialog) return
+          const focusable = [...dialog.querySelectorAll('button, input, select, textarea')].filter(node => !node.disabled)
+          if (focusable.length === 0) return
+          const first = focusable[0]
+          const last = focusable[focusable.length - 1]
+          const active = document.activeElement
+          if (event.shiftKey && (active === first || !dialog.contains(active))) {
+            event.preventDefault()
+            last.focus()
+          } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+            event.preventDefault()
+            first.focus()
+          }
         }
-        window.addEventListener('keydown', onEscape, true)
-        return () => window.removeEventListener('keydown', onEscape, true)
+        window.addEventListener('keydown', onKeyDown, true)
+        return () => window.removeEventListener('keydown', onKeyDown, true)
       }, [settingsOpen])
+
+      const loadCredentialStatus = (signal, attempt) => {
+        const requestId = ++credentialRequest.current
+        fetch(path, { signal }).then(response => {
+          if (!response.ok) throw new Error('status')
+          return response.json()
+        }).then(data => {
+          if (!live.current || requestId !== credentialRequest.current) return
+          credentialOk.current = true
+          applyCredentialStatus(data)
+          setCredentialFeedback(current => current?.code === 'status' ? null : current)
+        }).catch(error => {
+          if (!live.current || requestId !== credentialRequest.current) return
+          if (error?.name === 'AbortError' && !attempt.reportAbort) return
+          credentialOk.current = false
+          setCredentialLoaded(true)
+          setCredentialFeedback({ error: true, code: 'status', message: S('jevStatusError') })
+        })
+      }
 
       const changeCredential = async method => {
         if (credentialBusy) return
@@ -301,6 +353,7 @@ window.__ModuleLoader__.load({
             ...(method === 'PUT' ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify({ apiKey: credentialValue.trim() }) } : {}) })
           if (!response.ok) throw new Error('credential operation failed')
           const data = await response.json()
+          credentialOk.current = true
           applyCredentialStatus(data)
           setCredentialValue('')
           if (!data.jevAvailable && jev) updateSettings({ jevEnabled: false, eggRequiresJev: false })
@@ -311,18 +364,22 @@ window.__ModuleLoader__.load({
         } finally { setCredentialBusy(false) }
       }
 
-      const upload = (event, key, types, maxBytes) => {
+      const upload = (event, key) => {
         const file = event.target.files?.[0]
         if (!file) return
         event.target.value = ''
-        if (!types.includes(file.type) || file.size > maxBytes) {
+        const kind = key === 'customSound' ? 'sound' : 'mascot'
+        const maxBytes = kind === 'sound' ? 500_000 : 1_000_000
+        if (file.size > maxBytes || !resolveAssetMime(kind, file)) {
           setSettingsError(S('fileError'))
           return
         }
         const reader = new FileReader()
-        reader.onload = () => updateSettings(key === 'customSound'
-          ? { customSound: reader.result, soundPack: 'custom' }
-          : { [key]: reader.result })
+        reader.onload = () => {
+          const dataUrl = assetDataUrl(kind, file, reader.result)
+          if (!dataUrl) { setSettingsError(S('fileError')); return }
+          updateSettings(key === 'customSound' ? { customSound: dataUrl, soundPack: 'custom' } : { [key]: dataUrl })
+        }
         reader.onerror = () => setSettingsError(S('fileError'))
         reader.readAsDataURL(file)
       }
@@ -330,33 +387,51 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         live.current = true
         const controller = new AbortController()
-        fetch(path, { signal: controller.signal }).then(response => response.json()).then(data => {
-          if (live.current) applyCredentialStatus(data)
-        }).catch(() => {
-          if (live.current && !controller.signal.aborted) {
-            setCredentialLoaded(true)
-            setCredentialFeedback({ error: true, message: S('jevStatusError') })
-          }
-        })
+        const attempt = { reportAbort: false }
+        const timer = setTimeout(() => { attempt.reportAbort = true; controller.abort() }, 8000)
+        loadCredentialStatus(controller.signal, attempt)
         return () => {
           live.current = false
+          clearTimeout(timer)
           controller.abort()
+          judgeAbort.current?.abort()
           clearTimeout(eggTimer.current)
+          for (const clip of customClips.current) clip.pause()
+          customClips.current = []
           if (audio.current) { void audio.current.close(); audio.current = null }
         }
       }, [])
+
+      useEffect(() => {
+        if (!settingsOpen || credentialOk.current) return
+        setCredentialFeedback(current => current?.code === 'status' ? null : current)
+        setCredentialLoaded(false)
+        const controller = new AbortController()
+        const attempt = { reportAbort: false }
+        const timer = setTimeout(() => { attempt.reportAbort = true; controller.abort() }, 8000)
+        loadCredentialStatus(controller.signal, attempt)
+        return () => {
+          clearTimeout(timer)
+          if (!controller.signal.aborted) controller.abort()
+        }
+      }, [settingsOpen])
 
       useLayoutEffect(() => {
         const element = overlay.current
         if (!element) return
         let narrow = null
         let wide = null
-        for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
-          const rect = node.getBoundingClientRect()
-          if (rect.width < 300 || rect.width >= window.innerWidth) continue
-          if (!narrow) narrow = node
-          else if (rect.width > narrow.getBoundingClientRect().width + 120) { wide = node; break }
+        const findFrames = () => {
+          narrow = null
+          wide = null
+          for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+            const rect = node.getBoundingClientRect()
+            if (rect.width < 300 || rect.width >= window.innerWidth) continue
+            if (!narrow) narrow = node
+            else if (rect.width > narrow.getBoundingClientRect().width + 120) { wide = node; break }
+          }
         }
+        findFrames()
         const commit = next => setZones(previous => {
           const measured = { ...next, viewportWidth: window.innerWidth, viewportHeight: window.innerHeight }
           const same = previous.viewportWidth === measured.viewportWidth && previous.viewportHeight === measured.viewportHeight && ['left', 'right', 'dock'].every(side => {
@@ -366,7 +441,20 @@ window.__ModuleLoader__.load({
           })
           return same ? previous : measured
         })
+        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(() => measure()) : null
+        let observedNarrow = null
+        let observedWide = null
+        const watch = () => {
+          if (!observer || (observedNarrow === narrow && observedWide === wide)) return
+          observer.disconnect()
+          observedNarrow = narrow
+          observedWide = wide
+          if (narrow) observer.observe(narrow)
+          if (wide && wide !== narrow) observer.observe(wide)
+        }
         const measure = () => {
+          if (!narrow?.isConnected || !wide?.isConnected) findFrames()
+          watch()
           if (!narrow || !wide) return commit({ left: null, right: null, dock: null })
           const inner = narrow.getBoundingClientRect()
           const outer = wide.getBoundingClientRect()
@@ -382,8 +470,6 @@ window.__ModuleLoader__.load({
             dock: dockWidth >= 48 ? { left: dockLeft, width: dockWidth } : null,
           })
         }
-        const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
-        if (observer) for (const node of [narrow, wide]) if (node) observer.observe(node)
         window.addEventListener('resize', measure)
         measure()
         return () => { observer?.disconnect(); window.removeEventListener('resize', measure) }
@@ -395,7 +481,7 @@ window.__ModuleLoader__.load({
         setToastHover(false)
         setToastFocus(false)
         setToastInteracted(false)
-        play(tier, audio, settings)
+        play(tier, audio, runtime.current.settings, customClips.current)
       }
 
       useEffect(() => {
@@ -405,19 +491,36 @@ window.__ModuleLoader__.load({
         return () => clearTimeout(timeout)
       }, [toast?.id, toastHover, toastFocus, toastInteracted])
 
+      useEffect(() => {
+        if (settingsOpen || (!toast && !rulesOpen)) return
+        const onKeyDown = event => {
+          if (event.key !== 'Escape') return
+          event.preventDefault()
+          event.stopPropagation()
+          if (toast) { setToast(null); return }
+          if (rulesRef.current) rulesRef.current.open = false
+          setRulesOpen(false)
+        }
+        window.addEventListener('keydown', onKeyDown, true)
+        return () => window.removeEventListener('keydown', onKeyDown, true)
+      }, [settingsOpen, toast, rulesOpen])
+
       const showEgg = (preview = false) => {
+        const active = runtime.current.settings
         const now = Date.now()
         if (!preview) {
           lastEggAt.current = now
           save('egg.lastAt', now)
         }
-        setEgg({ id: now + Math.random(), ...settings })
-        if (sound) play('legendary', audio, settings)
+        setEgg({ id: now + Math.random(), ...active })
+        if (active.soundEnabled) play('legendary', audio, active, customClips.current)
         clearTimeout(eggTimer.current)
-        eggTimer.current = setTimeout(() => { if (live.current) setEgg(null) }, settings.eggDurationSec * 1000)
+        eggTimer.current = setTimeout(() => { if (live.current) setEgg(null) }, active.eggDurationSec * 1000)
       }
 
       useEffect(() => {
+        // Read settings and Jev availability from runtime.current so a revision is applied once,
+        // while a change made after this render still applies to the next event and to a late Jev reply.
         if (snapshot.revision === lastRevision.current) return
         const previousRevision = lastRevision.current
         lastRevision.current = snapshot.revision
@@ -427,6 +530,9 @@ window.__ModuleLoader__.load({
           return
         }
         const entries = newDurableEntries(snapshot, previousRevision, combo.current.seenSeq)
+        const countAtStart = combo.current.count
+        const pointsAtStart = combo.current.points
+        let pendingShow = null
         for (const entry of entries) {
           if (entry.type !== 'event') continue
           const observed = observeActivity(activityTracker.current, entry.event)
@@ -440,69 +546,83 @@ window.__ModuleLoader__.load({
           if (candidate.kind === 'summary') summary.current = candidate.text
           const result = advanceCombo(combo.current, candidate, Date.now())
           combo.current = result.state
-          setCount(result.state.count)
           if (result.earned > 0) {
-            setPoints(result.state.points)
-            save(`points.${sessionId}`, result.state.points)
             breakdown.current = addBreakdown(breakdown.current, candidate.kind, toolName, result.earned)
-            setScoreBreakdown(breakdown.current)
-            saveBreakdown(sessionId, breakdown.current)
             turnBreakdown.current = addBreakdown(turnBreakdown.current, candidate.kind, toolName, result.earned)
           }
           if (entry.event.type === 'turn/end') {
             const requestId = ++reviewRequest.current
             const turnSummary = summary.current
             const turnSummaryRows = summarizeBreakdown(turnBreakdown.current).slice(0, 3)
+            const turnState = result.state
             summary.current = ''
             let shownRating = null
             const finishReview = (answer, announce = false) => {
+              const normalized = announce ? null : normalizeJevAnswer(answer)
               if (!live.current || requestId !== reviewRequest.current) return
+              const active = runtime.current.settings
               if (eggShownSeq.current !== candidate.seq && shouldTriggerEgg({
                 completed: candidate.kind === 'complete',
-                failed: result.state.hadFailure,
-                combo: result.state.turnMaxCombo,
-                turnPoints: result.state.turnPoints,
+                failed: turnState.hadFailure,
+                combo: turnState.turnMaxCombo,
+                turnPoints: turnState.turnPoints,
                 now: Date.now(),
                 lastEggAt: lastEggAt.current,
-                jevChoice: answer?.choice,
-                probability: answer?.probability,
-              }, settings)) {
+                jevChoice: normalized?.choice,
+                probability: normalized?.probability,
+              }, active)) {
                 eggShownSeq.current = candidate.seq
                 showEgg()
               }
               const rating = ratingForTurn({
-                points: result.state.turnPoints,
+                points: turnState.turnPoints,
                 completed: candidate.kind === 'complete',
-                failed: result.state.hadFailure,
-                jevChoice: answer?.choice,
-                probability: answer?.probability,
+                failed: turnState.hadFailure,
+                jevChoice: normalized?.choice,
+                probability: normalized?.probability,
               })
               if (rating.key === shownRating) return
               shownRating = rating.key
               setReview(rating.key)
               save(`review.${sessionId}`, rating.key)
-              if (announce) show({ message: t(rating.key), tier: rating.tier, value: result.state.count,
-                earned: result.state.turnPoints, isReview: true, reviewSeq: candidate.seq, summary: turnSummaryRows })
+              const copy = runtime.current.t
+              if (announce) pendingShow = { message: copy(rating.key), tier: rating.tier, value: turnState.count,
+                earned: turnState.turnPoints, isReview: true, reviewSeq: candidate.seq, summary: turnSummaryRows }
               else setToast(current => current?.reviewSeq === candidate.seq
-                ? { ...current, message: t(rating.key), tier: rating.tier } : current)
+                ? { ...current, message: copy(rating.key), tier: rating.tier } : current)
             }
             finishReview(null, true)
-            if (candidate.kind === 'complete' && jev && available && turnSummary) {
+            if (candidate.kind === 'complete' && runtime.current.settings.jevEnabled && runtime.current.available && turnSummary) {
+              judgeAbort.current?.abort()
+              const controller = new AbortController()
+              judgeAbort.current = controller
+              const timer = setTimeout(() => controller.abort(), 12_000)
               fetch(path, {
                 method: 'POST', headers: { 'content-type': 'application/json' },
                 body: JSON.stringify({ kind: 'complete', text: turnSummary }),
+                signal: controller.signal,
               }).then(response => response.ok ? response.json() : null)
-                .then(answer => finishReview(answer)).catch(noop)
+                .then(answer => finishReview(answer))
+                .catch(noop)
+                .finally(() => clearTimeout(timer))
             }
             continue
           }
           if (!result.show) continue
-          show({ message: phraseFor(candidate.kind, result.tier, result.state.count, language()),
+          pendingShow = { message: phraseFor(candidate.kind, result.tier, result.state.count, language()),
             tier: result.tier, value: result.state.count, earned: result.earned,
             activity: classifyActivity(candidate.kind, toolName), name: toolName,
-            summary: summarizeBreakdown(turnBreakdown.current).slice(0, 3) })
+            summary: summarizeBreakdown(turnBreakdown.current).slice(0, 3) }
         }
-      }, [snapshot, jev, available, sound])
+        if (combo.current.count !== countAtStart) setCount(combo.current.count)
+        if (combo.current.points !== pointsAtStart) {
+          setPoints(combo.current.points)
+          setScoreBreakdown(breakdown.current)
+          save(`points.${sessionId}`, combo.current.points)
+          saveBreakdown(sessionId, breakdown.current)
+        }
+        if (pendingShow) show(pendingShow)
+      }, [snapshot])
 
       const select = (label, key, options) => h('label', { className: 'rf-dsh-field', key },
         h('span', null, S(label)),
@@ -540,7 +660,7 @@ window.__ModuleLoader__.load({
       const dockZone = settings.panelPlacement === 'left' && zones.viewportWidth > 1100 && zones.viewportHeight >= 560 ? zones.dock : null
       const dockWidth = dockZone?.width || 0
       const dockLeft = dockZone?.left || 0
-      const settingsPanel = settingsOpen && h('div', { className: 'rf-dsh-settings', role: 'dialog', 'aria-label': S('settings') },
+      const settingsPanel = settingsOpen && h('div', { ref: settingsDialog, className: 'rf-dsh-settings', role: 'dialog', 'aria-modal': 'true', 'aria-label': S('settings') },
         h('div', { className: 'rf-dsh-settings-head' }, h('strong', null, `🌈 ${S('settings')}`),
           h('button', { ref: settingsCloseButton, type: 'button', 'aria-label': S('close'), onClick: closeSettings }, '×')),
         h('h3', null, S('appearance')),
@@ -562,7 +682,7 @@ window.__ModuleLoader__.load({
             h('input', { type: 'range', min: 0, max: 1, step: .05, value: settings.volume, onChange: event => updateSettings({ volume: Number(event.target.value) }) }))),
         h('label', { className: 'rf-dsh-file' }, S('uploadSound'),
           h('input', { type: 'file', accept: '.mp3,.wav,.ogg,.webm,audio/mpeg,audio/wav,audio/ogg,audio/webm',
-            onChange: event => upload(event, 'customSound', ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/ogg', 'audio/webm'], 500_000) })),
+            onChange: event => upload(event, 'customSound') })),
         settings.customSound && h('button', { type: 'button', onClick: () => updateSettings({ customSound: '', soundPack: 'chime' }) }, S('removeSound')),
         h('h3', null, S('judgment')),
         h('div', { className: 'rf-dsh-credential' },
@@ -606,7 +726,7 @@ window.__ModuleLoader__.load({
             onChange: event => updateSettings({ eggMessage: event.target.value }) })),
         h('label', { className: 'rf-dsh-file' }, S('uploadMascot'),
           h('input', { type: 'file', accept: '.png,.jpg,.jpeg,.webp,.gif,image/png,image/jpeg,image/webp,image/gif',
-            onChange: event => upload(event, 'customMascot', ['image/png', 'image/jpeg', 'image/webp', 'image/gif'], 1_000_000) })),
+            onChange: event => upload(event, 'customMascot') })),
         settings.customMascot && h('button', { type: 'button', onClick: () => updateSettings({ customMascot: '' }) }, S('removeMascot')),
         settingsError && h('p', { className: 'rf-dsh-settings-error', role: 'alert' }, settingsError),
         h('div', { className: 'rf-dsh-settings-actions' },
@@ -621,7 +741,7 @@ window.__ModuleLoader__.load({
           '--rf-dock-left': `${dockLeft}px`, '--rf-dock-width': `${dockWidth}px` } },
         egg && h('div', { className: 'rf-dsh-egg-layer', 'data-rf-egg': egg.eggStyle, role: 'status', 'aria-live': 'polite' },
           renderZone('left', zones.left), renderZone('right', zones.right)),
-        toast && h('div', { key: toast.id, className: 'rf-dsh-toast', 'data-tier': toast.tier, role: 'status', 'aria-live': 'polite',
+        toast && h('div', { key: toast.id, className: 'rf-dsh-toast', 'data-tier': toast.tier, role: 'status', 'aria-live': 'polite', inert: settingsOpen ? '' : undefined,
           onMouseEnter: () => { setToastHover(true); setToastInteracted(true) },
           onMouseLeave: () => setToastHover(false),
           onFocusCapture: () => { setToastFocus(true); setToastInteracted(true) },
@@ -649,7 +769,7 @@ window.__ModuleLoader__.load({
           style: { '--rf-x': `${(i - 3.5) * 36}px`, '--rf-y': `${-25 - (i % 3) * 36}px`, '--rf-r': `${i * 57}deg`, color: ['#facc15', '#4ade80', '#38bdf8', '#fb7185'][i % 4] },
         }, ['✦', '◆', '●'][i % 3])),
         settingsPanel,
-        h('div', { className: 'rf-dsh-panel' },
+        h('div', { className: 'rf-dsh-panel', inert: settingsOpen ? '' : undefined },
           h('span', { className: 'rf-dsh-brand', title: t('name') }, h('span', { 'aria-hidden': 'true' }, '🌈'), h('span', { className: 'rf-dsh-brand-name' }, t('name'))),
           h('span', { className: 'rf-dsh-combo', 'aria-label': `${count} ${t('combo')}`, title: `${count} ${t('combo')}` }, h('b', null, `${count}×`), h('span', { className: 'rf-dsh-combo-label' }, ` ${t('combo')}`)),
           h('div', { className: 'rf-dsh-controls' },
@@ -690,7 +810,7 @@ window.__ModuleLoader__.load({
             title: t('sound'), 'aria-pressed': sound,
             onClick: () => {
               updateSettings({ soundEnabled: !sound })
-              if (!sound) play('spark', audio, { ...settings, soundEnabled: true })
+              if (!sound) play('spark', audio, { ...settings, soundEnabled: true }, customClips.current)
             },
           }, sound ? '♫' : '♪̸'),
           h('button', {
