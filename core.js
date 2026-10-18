@@ -10,14 +10,15 @@ export function latestDurableSeq(entries, baseline = -1) {
   return seq
 }
 
-/** Use the hot-path delta; recover from batched revisions by reading only unseen durable seqs. */
+/** Use the hot-path delta; recover unseen seqs after a revision gap or an unknown incremental kind. */
 export function newDurableEntries(snapshot, previousRevision, seenSeq) {
-  if (snapshot.change.kind === 'replace' || snapshot.change.kind === 'prepend') return []
+  if (!snapshot?.change || snapshot.change.kind === 'replace' || snapshot.change.kind === 'prepend') return []
   if (snapshot.revision === previousRevision + 1) {
     if (snapshot.change.kind === 'append') return snapshot.change.entries
-    return snapshot.change.kind === 'settle-assistant' && snapshot.change.entry ? [snapshot.change.entry] : []
+    if (snapshot.change.kind === 'settle-assistant') return snapshot.change.entry ? [snapshot.change.entry] : []
   }
-  return snapshot.entries.filter(entry => entry.type === 'event' && entry.event.seq > seenSeq)
+  const entries = Array.isArray(snapshot.entries) ? snapshot.entries : []
+  return entries.filter(entry => entry?.type === 'event' && entry.event?.seq > seenSeq)
 }
 
 export function initialCombo(points = 0) {
@@ -198,6 +199,15 @@ export function advanceCombo(state, candidate, now, options = DEFAULTS) {
   const show = milestone || now - state.lastShownAt >= options.cooldownMs
   if (show) next.lastShownAt = now
   return { state: next, show, tier, earned }
+}
+
+/** Host and the page both receive `{ choice, probability }`; drop anything that cannot moderate a rating. */
+export function normalizeJevAnswer(answer) {
+  const choice = answer?.choice
+  const probability = answer?.probability
+  if (!['none', 'steady', 'breakthrough'].includes(choice)) return null
+  if (typeof probability !== 'number' || !Number.isFinite(probability) || probability < 0 || probability > 1) return null
+  return { choice, probability }
 }
 
 export function phraseFor(kind, tier, count, language = 'zh') {

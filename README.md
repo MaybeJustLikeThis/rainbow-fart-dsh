@@ -4,7 +4,7 @@
 
 给 [DeepSeek Harness（DSH）](https://github.com/deepseek-ai/deepseek-harness) Web 会话添加轻量的连击、积分、轮次评价和可选彩蛋。插件只呈现趣味反馈，不改变 Agent 的工具执行或会话日志；积分和评价不代表代码质量、测试或部署结果。
 
-> 当前版本：0.5.7。针对 DSH 0.1.7-rc.2 验证。DSH 仍处于开发预览，后续版本可能调整插件接口。
+> 当前版本：0.5.8。接口按 DSH 0.1.7-rc.2 编写。DSH 仍处于开发预览，后续版本可能调整插件接口。
 
 ## 功能
 
@@ -19,7 +19,7 @@
 
 ~~~sh
 npm install -g @deepseek-ai/dsh@0.1.7-rc.2
-dsh plugin --profile web add github:MaybeJustLikeThis/rainbow-fart-dsh#v0.5.7
+dsh plugin --profile web add github:MaybeJustLikeThis/rainbow-fart-dsh#v0.5.8
 dsh --profile web --dump-config
 dsh web
 ~~~
@@ -54,7 +54,7 @@ dsh plugin --profile web add .
 
 ## 自定义与彩蛋
 
-点击 ⚙ 调整主题、动效、音效、面板布局、彩蛋条件及素材；设置弹窗支持 Esc 关闭，并将键盘焦点返回 ⚙。自定义音频支持 MP3、WAV、OGG、WebM，文件不超过 500 KB；上传后会自动选择「自定义音频」，但不会自行开启音效。角色图支持 PNG、JPEG、WebP、GIF，文件不超过 1 MB。音频播放仍受浏览器自动播放策略影响。系统启用「减少动态效果」时，粒子和弹入动效会停用。✦、★ 和「预览彩蛋」不计分，也不消耗彩蛋冷却时间。
+点击 ⚙ 调整主题、动效、音效、面板布局、彩蛋条件及素材。设置弹窗打开时，Tab 停留在弹窗内，Esc 关闭并把焦点还给 ⚙；得分弹窗和 `?` 面板也可按 Esc 关闭，设置打开时 Esc 只关闭设置。修改彩蛋开关或门槛后，下一次完成轮次即按新设置判断。自定义音频支持 MP3、WAV、OGG、WebM，文件不超过 500 KB；浏览器没有给出标准 MIME 时，按扩展名识别。上传后会自动选择「自定义音频」，但不会自行开启音效。角色图支持 PNG、JPEG、WebP、GIF，文件不超过 1 MB。音频播放仍受浏览器自动播放策略影响。系统启用「减少动态效果」时，粒子和弹入动效会停用。✦、★ 和「预览彩蛋」不计分，也不消耗彩蛋冷却时间。
 
 默认彩蛋仅在新轮次成功结束时检查：本轮无失败、曾达到至少 8 连击、本轮至少 200 分，并且距上次触发至少 10 分钟。可选再要求 Jev 返回概率至少 0.75 的 breakthrough。窄窗口隐藏双侧效果，避免遮挡内容。
 
@@ -62,7 +62,7 @@ dsh plugin --profile web add .
 
 点击插件的 **J** 按钮或 **⚙ → 语义判断**，在「TypeSafe API 密钥」输入框粘贴密钥并保存，然后手动开启「启用 Jev 辅助判断」。未配置时 Jev 保持关闭，本地计分和评价继续工作。设置页只显示密钥是否存在，**不验证密钥有效性**；实际 Jev 请求需要有效的 TypeSafe 凭据。
 
-密钥经 DSH 已认证的本机接口写入 [DSH 凭据服务](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/credentials/credentials-local/README.md)，默认保存在 `$DSH_HOME/.credentials.yaml`；插件不会将密钥写入浏览器 localStorage，也不会把密钥返回给页面。可在同一设置页删除密钥。若由 DSH 启动环境提供密钥，设置页显示只读状态，应在启动环境中修改。原有 `TYPESAFE_API_KEY`、`TYPESAFE_API_KEY_FILE` 以及插件配置中的 `apiKeyFile`、`model`（默认 `jev-1.13.0`）和 `timeoutMs`（默认 2500）继续可用。
+密钥经 DSH 已认证的本机接口写入 [DSH 凭据服务](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/credentials/credentials-local/README.md)，默认保存在 `$DSH_HOME/.credentials.yaml`；插件不会将密钥写入浏览器 localStorage，也不会把密钥返回给页面。可在同一设置页删除密钥。若由 DSH 启动环境提供密钥，设置页显示只读状态，应在启动环境中修改。读取配置超过约 8 秒会提示失败，再次打开设置会重试。原有 `TYPESAFE_API_KEY`、`TYPESAFE_API_KEY_FILE` 以及插件配置中的 `apiKeyFile`、`model`（默认 `jev-1.13.0`）和 `timeoutMs`（默认 2500）继续可用。
 
 开启 Jev 后，插件最多发送最近一条助手文本的 500 字符摘要给 TypeSafe；不想发送时保持关闭即可。密钥保存、删除或更换后无需重启 DSH。
 
@@ -73,7 +73,7 @@ npm run check
 npm pack --dry-run
 ~~~
 
-client.source.js、core.js 和 customization.js 是客户端源码；npm run build 生成并校验提交到仓库的 client.js。index.js 提供 Host 插件及受 DSH 身份验证保护的路由；cordis.patch.yml 是安装用 bundle 层，local.patch.yml 可用于源码调试。规则测试见 test/，详细需求及历史验收见 [PRD.md](./PRD.md)。
+client.source.js、core.js 和 customization.js 是客户端源码；npm run build 生成并校验提交到仓库的 client.js。index.js 提供 Host 插件及受 DSH 身份验证保护的路由；cordis.patch.yml 是安装用 bundle 层，local.patch.yml 可用于源码调试。默认角色图在 Host 进程内只读一次，并允许浏览器缓存约一天；页面地址里的 `asset=sailor-20260924` 是缓存键，更换图片时要同时改这个查询参数。规则测试见 test/，详细需求及历史验收见 [PRD.md](./PRD.md)。
 
 ## 开源
 

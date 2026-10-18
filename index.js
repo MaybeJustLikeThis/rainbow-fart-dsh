@@ -1,7 +1,11 @@
 /** Rainbow Fart-DSH Host companion. Credential reads and Jev requests stay on Host. */
 import { readFileSync } from 'node:fs'
+import { normalizeJevAnswer } from './core.js'
 export const name = 'rainbow-fart-dsh'
 export const inject = ['connection', 'credentials']
+
+// Read once. The page cache key is `?asset=sailor-20260924`; change that query when replacing this file.
+const MASCOT_BYTES = readFileSync(new URL('./assets/whale-girl.png', import.meta.url))
 
 const PATH = '/api/rainbow-fart.judge'
 const MASCOT_PATH = '/api/rainbow-fart.mascot'
@@ -33,8 +37,8 @@ export function apply(ctx, rawConfig = {}) {
     path: MASCOT_PATH,
     methods: ['GET'],
     requestBody: 'buffered',
-    fetch: () => new Response(readFileSync(new URL('./assets/whale-girl.png', import.meta.url)), {
-      headers: { 'content-type': 'image/png', 'cache-control': 'no-store' },
+    fetch: () => new Response(MASCOT_BYTES, {
+      headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' },
     }),
   }), 'rainbow-fart-dsh: mascot image')
 }
@@ -112,15 +116,17 @@ export async function handle(request, config, deps = { fetch, env: process.env }
       body: JSON.stringify({ model: config.model, state: { summary: input.text }, questions: { praise: question } }),
       signal: AbortSignal.timeout(config.timeoutMs),
     })
-    if (!upstream.ok) return Response.json({ error: 'Jev request failed' }, { status: 502 })
+    if (!upstream.ok) {
+      await upstream.body?.cancel?.().catch(() => {})
+      return Response.json({ error: 'Jev request failed' }, { status: 502 })
+    }
     const output = await upstream.json()
     const answer = output?.answers?.praise
-    const choice = answer?.choice
-    const probability = answer?.probabilities?.[choice]
-    if (answer?.type !== 'choice' || !ALLOWED.has(choice) || typeof probability !== 'number' || probability < 0 || probability > 1) {
+    const normalized = normalizeJevAnswer({ choice: answer?.choice, probability: answer?.probabilities?.[answer?.choice] })
+    if (answer?.type !== 'choice' || !normalized || !ALLOWED.has(normalized.choice)) {
       return Response.json({ error: 'Invalid Jev answer' }, { status: 502 })
     }
-    return Response.json({ choice, probability }, { headers: { 'cache-control': 'no-store' } })
+    return Response.json(normalized, { headers: { 'cache-control': 'no-store' } })
   } catch {
     return Response.json({ error: 'Jev temporarily unavailable' }, { status: 502 })
   }
